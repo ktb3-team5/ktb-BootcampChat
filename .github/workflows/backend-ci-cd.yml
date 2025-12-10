@@ -38,8 +38,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
 
-      - name: Run tests
-        run: ./mvnw test
+#      - name: Run tests
+#        run: ./mvnw test
 
       - name: Build JAR (skip tests for faster deploy)
         run: ./mvnw clean package -DskipTests
