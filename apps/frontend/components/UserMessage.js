@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useMemo } from "react";
 import { VStack, HStack } from "@vapor-ui/core";
 import MessageContent from "./MessageContent";
 import MessageActions from "./MessageActions";
@@ -16,21 +16,29 @@ const UserMessage = ({
 }) => {
   const messageDomRef = useRef(null);
 
-  const formattedTime = new Date(msg.timestamp)
-    .toLocaleString("ko-KR", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: false,
-    })
-    .replace(/\./g, "년")
-    .replace(/\s/g, " ")
-    .replace("일 ", "일 ");
+  // ✅ 시간 포맷은 timestamp 바뀔 때만 재계산
+  const formattedTime = useMemo(() => {
+    if (!msg.timestamp) return "";
+    return new Date(msg.timestamp)
+      .toLocaleString("ko-KR", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      })
+      .replace(/\./g, "년")
+      .replace(/\s/g, " ")
+      .replace("일 ", "일 ");
+  }, [msg.timestamp]);
 
-  const user = isMine ? currentUser : msg.sender;
+  // ✅ user 객체도 isMine / msg.sender 바뀔 때만 재계산
+  const user = useMemo(
+    () => (isMine ? currentUser : msg.sender),
+    [isMine, currentUser, msg.sender]
+  );
 
   return (
     <div className="my-4" ref={messageDomRef} data-testid="message-container">
@@ -113,4 +121,14 @@ const UserMessage = ({
   );
 };
 
-export default React.memo(UserMessage);
+// ✅ 이 메시지 컴포넌트도 memo + 커스텀 비교
+function areUserMessageEqual(prev, next) {
+  return (
+    prev.msg === next.msg && // msg 객체 참조가 바뀐 메시지만 리렌더
+    prev.isMine === next.isMine &&
+    prev.currentUser === next.currentUser &&
+    prev.room === next.room
+  );
+}
+
+export default React.memo(UserMessage, areUserMessageEqual);

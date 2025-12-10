@@ -366,18 +366,19 @@ const ChatInput = forwardRef(
             <HStack>
               <Textarea
                 ref={messageInputRef}
+                data-testid="chat-message-input"
                 onChange={handleInputChange}
                 onKeyDownCapture={handleKeyDown}
                 disabled={disabled}
                 rows={1}
                 autoResize
-                plac
-                eholder="메시지를 입력하세요…"
+                placeholder="메시지를 입력하세요…"
               />
 
               <IconButton
                 size="xl"
-                disabled={isDisabledSend}
+                data-testid="chat-send-button"
+                disabled={disabled}
                 onClick={handleSubmit}
               >
                 <SendIcon />
@@ -404,6 +405,7 @@ const ChatInput = forwardRef(
               </IconButton>
 
               <input
+                data-testid="file-upload-input"
                 ref={fileInputElRef}
                 type="file"
                 className="hidden"
