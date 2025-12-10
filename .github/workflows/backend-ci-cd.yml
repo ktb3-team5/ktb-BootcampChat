@@ -115,7 +115,6 @@ jobs:
           JWT_SECRET=${{ secrets.JWT_SECRET }}
           ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
           ENCRYPTION_SALT=${{ secrets.ENCRYPTION_SALT }}
-          OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }}
           EOF
 
       - name: Deploy JAR & restart via Makefile
@@ -141,8 +140,4 @@ jobs:
           
             # 기존 재시작 명령어
             ssh ubuntu@$server "chmod +x $DEPLOY_PATH/app-control.sh && cd $DEPLOY_PATH && ./app-control.sh restart"
-          
-            # Health Check 대기
-            echo "Waiting for health check on $server..."
-            sleep 30 
           done
