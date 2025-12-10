@@ -6,35 +6,37 @@ import CustomAvatar from "./CustomAvatar";
 import ReadStatus from "./ReadStatus";
 
 const UserMessage = ({
-  msg = {},
-  isMine = false,
-  currentUser = null,
-  onReactionAdd = () => {},
-  onReactionRemove = () => {},
-  room = null,
+  msg,
+  isMine,
+  currentUser,
+  onReactionAdd,
+  onReactionRemove,
+  room,
   socketRef,
 }) => {
   const messageDomRef = useRef(null);
 
-  // ✅ 시간 포맷은 timestamp 바뀔 때만 재계산
+  const currentUserId = currentUser?._id || currentUser?.id;
+
+  // 내가 읽은 메시지는 항상 읽음으로 간주
+  const normalizedReaders = useMemo(() => {
+    const r = msg.readers || [];
+    return r.includes(currentUserId) ? r : [...r, currentUserId];
+  }, [msg.readers, currentUserId]);
+
   const formattedTime = useMemo(() => {
     if (!msg.timestamp) return "";
-    return new Date(msg.timestamp)
-      .toLocaleString("ko-KR", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        hour12: false,
-      })
-      .replace(/\./g, "년")
-      .replace(/\s/g, " ")
-      .replace("일 ", "일 ");
+    return new Date(msg.timestamp).toLocaleString("ko-KR", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false,
+    });
   }, [msg.timestamp]);
 
-  // ✅ user 객체도 isMine / msg.sender 바뀔 때만 재계산
   const user = useMemo(
     () => (isMine ? currentUser : msg.sender),
     [isMine, currentUser, msg.sender]
@@ -57,22 +59,16 @@ const UserMessage = ({
         </HStack>
 
         <div
-          className={`
-          relative group
-          rounded-2xl px-4 py-3
-          border transition-all duration-200
-          ${
+          className={`relative group rounded-2xl px-4 py-3 border transition-all duration-200 ${
             isMine
               ? "bg-gray-800 border-blue-500 hover:border-blue-400 hover:shadow-md"
               : "bg-transparent border-gray-400 hover:border-gray-300 hover:shadow-md"
-          }
-        `}
+          }`}
         >
           <div
-            className={`
-              text-base leading-relaxed
-              ${isMine ? "text-blue-100" : "text-white"}
-            `}
+            className={`text-base leading-relaxed ${
+              isMine ? "text-blue-100" : "text-white"
+            }`}
             data-testid="message-content"
           >
             <MessageContent content={msg.content} />
@@ -97,10 +93,10 @@ const UserMessage = ({
             <ReadStatus
               messageType={msg.type}
               participants={room?.participants || []}
-              readers={msg.readers || []}
+              readers={normalizedReaders}
               messageId={msg._id}
               messageRef={messageDomRef}
-              currentUserId={currentUser?._id || currentUser?.id}
+              currentUserId={currentUserId}
               socketRef={socketRef}
             />
           </HStack>
@@ -110,7 +106,7 @@ const UserMessage = ({
           messageId={msg._id}
           messageContent={msg.content}
           reactions={msg.reactions}
-          currentUserId={currentUser?._id || currentUser?.id}
+          currentUserId={currentUserId}
           onReactionAdd={onReactionAdd}
           onReactionRemove={onReactionRemove}
           isMine={isMine}
@@ -121,14 +117,12 @@ const UserMessage = ({
   );
 };
 
-// ✅ 이 메시지 컴포넌트도 memo + 커스텀 비교
+/* -------------------------------------------------------
+   가장 강력하고 실용적인 비교 함수 → 참조 안정성 필수
+------------------------------------------------------- */
+
 function areUserMessageEqual(prev, next) {
-  return (
-    prev.msg === next.msg && // msg 객체 참조가 바뀐 메시지만 리렌더
-    prev.isMine === next.isMine &&
-    prev.currentUser === next.currentUser &&
-    prev.room === next.room
-  );
+  return prev.msg === next.msg;
 }
 
 export default React.memo(UserMessage, areUserMessageEqual);
