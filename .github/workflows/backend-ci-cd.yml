@@ -131,13 +131,18 @@ jobs:
              scp app-control.sh ubuntu@$server:$DEPLOY_PATH/ &
           done
           wait # 업로드 완료 대기
-
+          
+          
           # 2. 순차적으로 재시작 (무중단 효과)
           for server in ${{ steps.get_backend_ips.outputs.ips }}; do
             echo "Restarting server $server..."
+            
+            ssh ubuntu@$server "mkdir -p $DEPLOY_PATH/logs && sudo chown -R ubuntu:ubuntu $DEPLOY_PATH/logs && sudo chmod 755 $DEPLOY_PATH/logs"
+          
+            # 기존 재시작 명령어
             ssh ubuntu@$server "chmod +x $DEPLOY_PATH/app-control.sh && cd $DEPLOY_PATH && ./app-control.sh restart"
           
-            # Health Check 대기 (Optional: ELB Health Check가 있다면 ELB에서 인스턴스 제외/추가 로직 필요)
+            # Health Check 대기
             echo "Waiting for health check on $server..."
             sleep 30 
           done
