@@ -6,6 +6,9 @@ import UserMessage from "./UserMessage";
 import { useInfiniteScroll } from "../hooks/useInfiniteScroll";
 import { useAutoScroll } from "../hooks/useAutoScroll";
 
+/* ------------------------------
+   1. 서브 컴포넌트들은 그대로 메모
+------------------------------ */
 const LoadingIndicator = React.memo(() => (
   <div className="loading-messages">
     <div
@@ -38,7 +41,10 @@ const EmptyMessages = React.memo(() => (
 ));
 EmptyMessages.displayName = "EmptyMessages";
 
-const ChatMessages = ({
+/* ------------------------------
+   2. 본체 컴포넌트
+------------------------------ */
+const ChatMessagesInner = ({
   messages = [],
   currentUser = null,
   room = null,
@@ -49,42 +55,55 @@ const ChatMessages = ({
   onLoadMore = () => {},
   socketRef,
 }) => {
-  // 무한 스크롤 훅
+  /* 2-1. currentUserId를 안정적인 primitive로 뽑기 */
+  const currentUserId = useMemo(
+    () => currentUser?.id || currentUser?._id || null,
+    [currentUser]
+  );
+
+  /* 2-2. 무한 스크롤 훅 */
   const { sentinelRef } = useInfiniteScroll(
     onLoadMore,
     hasMoreMessages,
     loadingMessages
   );
 
-  // 자동 스크롤 훅 (스크롤 복원 기능 포함)
-  const { containerRef, scrollToBottom, isNearBottom } = useAutoScroll(
+  /* 2-3. 자동 스크롤 훅 (가능하면 messages 전체 대신 length만 넘기도록 훅을 수정하는 게 베스트) */
+  const { containerRef } = useAutoScroll(
     messages,
-    currentUser?.id,
+    currentUserId,
     loadingMessages,
-    100 // 하단 100px 이내면 자동 스크롤
+    100
   );
+
+  /* 2-4. isMine 계산 콜백 (currentUserId만 의존) */
   const isMine = useCallback(
     (msg) => {
-      if (!msg?.sender || !currentUser?.id) return false;
+      if (!msg?.sender || !currentUserId) return false;
 
-      return (
-        msg.sender._id === currentUser.id ||
-        msg.sender.id === currentUser.id ||
-        msg.sender === currentUser.id
-      );
+      const sender = msg.sender;
+      const senderId =
+        sender._id || sender.id || (typeof sender === "string" ? sender : null);
+
+      return senderId === currentUserId;
     },
-    [currentUser?.id]
+    [currentUserId]
   );
 
-  const allMessages = useMemo(() => {
-    if (!Array.isArray(messages)) return [];
+  /* 2-5. 메시지 리스트
+     ✨ 여기에서 정렬은 "하지 않는다".
+     - 서버 또는 상위 컴포넌트에서 이미 정렬된 배열을 내려준다고 가정.
+     - 정말 정렬이 필요하면, messages를 setState 하는 곳에서 한 번만 정렬하는 게 맞음.
+  */
+  const stableMessages = useMemo(
+    () => (Array.isArray(messages) ? messages : []),
+    [messages]
+  );
 
-    return messages.sort((a, b) => {
-      if (!a?.timestamp || !b?.timestamp) return 0;
-      return new Date(a.timestamp) - new Date(b.timestamp);
-    });
-  }, [messages]);
-
+  /* 2-6. 메시지 렌더러
+     - useCallback으로 고정
+     - 각 Message 컴포넌트에는 `msg`뿐 아니라 공통 props만 전달 (지금 구조에서는 msg 전체를 넘기는 게 불가피하지만, memo가 먹도록 msg 불변성 유지가 중요)
+  */
   const renderMessage = useCallback(
     (msg, idx) => {
       if (!msg) return null;
@@ -94,27 +113,36 @@ const ChatMessages = ({
         room,
         onReactionAdd,
         onReactionRemove,
+        socketRef,
       };
 
-      const MessageComponent =
-        {
-          system: SystemMessage,
-          file: FileMessage,
-        }[msg.type] || UserMessage;
+      const key = msg._id || msg.id || `msg-${idx}`;
+
+      if (msg.type === "system") {
+        return <SystemMessage key={key} msg={msg} />;
+      }
+
+      if (msg.type === "file") {
+        return (
+          <FileMessage
+            key={key}
+            {...commonProps}
+            msg={msg}
+            isMine={isMine(msg)}
+          />
+        );
+      }
 
       return (
-        <MessageComponent
-          key={msg._id || `msg-${idx}`}
+        <UserMessage
+          key={key}
           {...commonProps}
           msg={msg}
-          content={msg.content}
-          isMine={msg.type !== "system" ? isMine(msg) : undefined}
-          isStreaming={msg.type === "ai" ? msg.isStreaming || false : undefined}
-          socketRef={socketRef}
+          isMine={isMine(msg)}
         />
       );
     },
-    [currentUser, room, isMine, onReactionAdd, onReactionRemove, socketRef]
+    [currentUser, room, onReactionAdd, onReactionRemove, socketRef, isMine]
   );
 
   return (
@@ -128,7 +156,7 @@ const ChatMessages = ({
       aria-atomic="false"
       data-testid="chat-messages-container"
     >
-      {/* Sentinel 요소 - 스크롤 맨 위에 배치하여 위로 스크롤 시 이전 메시지 로드 */}
+      {/* 상단 sentinel - 이전 메시지 로딩 */}
       {hasMoreMessages && (
         <div
           ref={sentinelRef}
@@ -144,17 +172,49 @@ const ChatMessages = ({
         </div>
       )}
 
-      {!hasMoreMessages && messages.length > 0 && <MessageHistoryEnd />}
+      {!hasMoreMessages && stableMessages.length > 0 && <MessageHistoryEnd />}
 
-      {allMessages.length === 0 ? (
+      {stableMessages.length === 0 ? (
         <EmptyMessages />
       ) : (
-        allMessages.map((msg, idx) => renderMessage(msg, idx))
+        stableMessages.map((msg, idx) => renderMessage(msg, idx))
       )}
     </VStack>
   );
 };
 
+/* ------------------------------
+   3. React.memo + 커스텀 비교로
+      쓸데없는 리렌더 차단
+------------------------------ */
+function areChatMessagesEqual(prev, next) {
+  // messages는 "참조"만 비교 (불변성 유지가 전제)
+  if (prev.messages !== next.messages) return false;
+
+  const prevUserId = prev.currentUser?.id || prev.currentUser?._id;
+  const nextUserId = next.currentUser?.id || next.currentUser?._id;
+
+  if (prevUserId !== nextUserId) return false;
+
+  const prevRoomId = prev.room?._id || prev.room?.id;
+  const nextRoomId = next.room?._id || next.room?.id;
+
+  if (prevRoomId !== nextRoomId) return false;
+
+  if (prev.loadingMessages !== next.loadingMessages) return false;
+  if (prev.hasMoreMessages !== next.hasMoreMessages) return false;
+
+  // onReactionAdd / onReactionRemove / onLoadMore / socketRef 는
+  // 상위에서 useCallback/ useRef 로 고정해준다는 가정
+  if (prev.onReactionAdd !== next.onReactionAdd) return false;
+  if (prev.onReactionRemove !== next.onReactionRemove) return false;
+  if (prev.onLoadMore !== next.onLoadMore) return false;
+  if (prev.socketRef !== next.socketRef) return false;
+
+  return true;
+}
+
+const ChatMessages = React.memo(ChatMessagesInner, areChatMessagesEqual);
 ChatMessages.displayName = "ChatMessages";
 
-export default React.memo(ChatMessages);
+export default ChatMessages;
