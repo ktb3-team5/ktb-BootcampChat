@@ -128,14 +128,15 @@ const FileMessage = ({
         user?.token
       )}&sessionId=${encodeURIComponent(user?.sessionId)}&download=true`;
 
-      const iframe = document.createElement("iframe");
-      iframe.style.display = "none";
-      iframe.src = authenticatedUrl;
-      document.body.appendChild(iframe);
-
-      setTimeout(() => {
-        document.body.removeChild(iframe);
-      }, 5000);
+      const link = document.createElement("a");
+      link.href = authenticatedUrl;
+      link.setAttribute(
+        "download",
+        getDecodedFilename(msg.file?.originalname || "download")
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (error) {
       console.error("File download error:", error);
       setError(error.message || "파일 다운로드 중 오류가 발생했습니다.");

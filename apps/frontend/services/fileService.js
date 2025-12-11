@@ -93,7 +93,7 @@ class FileService {
       // 1단계: S3 key 생성
       const extension = file.name.split('.').pop().toLowerCase();
       const fileName = `${ulid()}.${extension}`;
-      const s3Key = `chat-files/${Date.now()}_${fileName}`;
+      const s3Key = `chat-files/${fileName}`;
 
       // 2단계: S3에 직접 업로드
       const s3Url = `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${s3Key}`;
@@ -116,8 +116,8 @@ class FileService {
 
       // 3단계: 백엔드에 메타데이터 등록
       const registerUrl = this.baseUrl ?
-        `${this.baseUrl}/api/files/register` :
-        '/api/files/register';
+        `${this.baseUrl}/api/files/upload` :
+        '/api/files/upload';
 
       const response = await axiosInstance.post(registerUrl, {
         s3Key: s3Key,
