@@ -16,7 +16,6 @@ deploy:
 		echo "→ Deploying to $$server..."; \
 		ssh -o StrictHostKeyChecking=no ubuntu@$$server "mkdir -p $(DEPLOY_PATH)"; \
 		echo "  📁 Copying FULL standalone build..."; \
-		# [핵심] standalone 폴더 하나만 보냅니다. (이 안에 BUILD_ID, static, public 다 있음)
 		rsync -avz --delete --exclude='*.log' --exclude='.env*' --exclude="server.pid" \
 			-e "ssh -o StrictHostKeyChecking=no" \
 			.next/standalone/ ubuntu@$$server:$(DEPLOY_PATH)/; \
