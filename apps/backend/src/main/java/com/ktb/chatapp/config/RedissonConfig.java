@@ -1,5 +1,6 @@
 package com.ktb.chatapp.config;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
@@ -20,9 +21,9 @@ public class RedissonConfig {
     private int redisPort;
 
     @Bean
-    public RedissonClient redissonClient() {
+    public RedissonClient redissonClient(ObjectMapper objectMapper) {
         Config config = new Config();
-        config.setCodec(new JsonJacksonCodec());
+        config.setCodec(new JsonJacksonCodec(objectMapper));
 
         config.useSingleServer()
                 .setAddress("redis://" + redisHost + ":" + redisPort)
