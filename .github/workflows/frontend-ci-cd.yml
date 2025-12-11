@@ -38,6 +38,9 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
             NEXT_PUBLIC_SOCKET_URL=${{ secrets.NEXT_PUBLIC_SOCKET_URL }}
+            NEXT_PUBLIC_AWS_REGION=${{ secrets.NEXT_PUBLIC_AWS_REGION }}
+            NEXT_PUBLIC_S3_BUCKET_NAME=${{ secrets.NEXT_PUBLIC_S3_BUCKET_NAME }}
+            NEXT_PUBLIC_CLOUDFRONT_URL=${{ secrets.NEXT_PUBLIC_CLOUDFRONT_URL }}
 
   deploy-to-ec2:
     name: Deploy to EC2
