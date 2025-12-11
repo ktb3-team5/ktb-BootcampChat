@@ -13,8 +13,8 @@ import org.springframework.context.annotation.Configuration;
 @Configuration
 public class RedissonConfig {
 
-    // FIXME: @Value("${spring.data.redis.host}")
-    private String redisHost = "localhost";
+    @Value("${spring.data.redis.host}")
+    private String redisHost;
 
     @Value("${spring.data.redis.port}")
     private int redisPort;
