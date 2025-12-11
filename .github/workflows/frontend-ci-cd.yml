@@ -104,6 +104,14 @@ jobs:
             ssh-keyscan -H "$ip" >> ~/.ssh/known_hosts 2>/dev/null || true
           done
 
+      - name: Debug - List standalone files
+        working-directory: apps/frontend
+        run: |
+          echo "Checking standalone directory structure..."
+          ls -R .next/standalone
+          echo "Checking if BUILD_ID exists..."
+          ls -l .next/standalone/.next/BUILD_ID || echo "BUILD_ID is MISSING!"
+
       - name: Deploy frontend via Makefile
         working-directory: apps/frontend
         env:
