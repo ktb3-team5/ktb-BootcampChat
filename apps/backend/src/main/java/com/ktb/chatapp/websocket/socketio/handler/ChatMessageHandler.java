@@ -181,6 +181,13 @@ public class ChatMessageHandler {
             socketIOServer.getRoomOperations(roomId)
                     .sendEvent(MESSAGE, createMessageResponse(savedMessage, sender));
 
+            socketAuxExecutor.submit(() -> aiService.handleAIMentions(roomId, socketUser.id(), messageContent));
+            socketAuxExecutor.submit(() -> sessionService.updateLastActivity(socketUser.id()));
+
+            // Record success metrics
+            recordMessageSuccess(messageType);
+            timerSample.stop(createTimer("success", messageType));
+
             log.debug("Message processed - messageId: {}, type: {}, room: {}",
                     savedMessage.getId(), savedMessage.getType(), roomId);
 
@@ -193,13 +200,6 @@ public class ChatMessageHandler {
             ));
             timerSample.stop(createTimer("error", "exception"));
         }
-
-        socketAuxExecutor.submit(() -> aiService.handleAIMentions(roomId, socketUser.id(), messageContent));
-        socketAuxExecutor.submit(() -> sessionService.updateLastActivity(socketUser.id()));
-
-        // Record success metrics
-        recordMessageSuccess(messageType);
-        timerSample.stop(createTimer("success", messageType));
     }
 
     private Message handleFileMessage(String roomId, String userId, MessageContent messageContent, Map<String, Object> fileData) {
