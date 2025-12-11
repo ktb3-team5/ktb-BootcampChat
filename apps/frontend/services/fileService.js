@@ -81,33 +81,56 @@ class FileService {
       return validationResult;
     }
 
-    try {
-      const uploadUrl = this.baseUrl ?
-        `${this.baseUrl}/api/files/upload` :
-        '/api/files/upload';
+    // 환경 변수 검증
+    if (!process.env.NEXT_PUBLIC_S3_BUCKET_NAME || !process.env.NEXT_PUBLIC_AWS_REGION) {
+      return {
+        success: false,
+        message: 'S3 설정이 올바르지 않습니다. 관리자에게 문의하세요.'
+      };
+    }
 
-      const formData = new FormData();
-      formData.append('file', file);
+    try {
+      // 1단계: S3 key 생성
+      const extension = file.name.split('.').pop().toLowerCase();
+      const fileName = `${ulid()}.${extension}`;
+      const s3Key = `chat-files/${Date.now()}_${fileName}`;
+
+      // 2단계: S3에 직접 업로드
+      const s3Url = `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${s3Key}`;
 
       const source = CancelToken.source();
       this.activeUploads.set(file.name, source);
 
-      const response = await axiosInstance.post(uploadUrl, formData, {
+      const uploadResponse = await fetch(s3Url, {
+        method: 'PUT',
+        body: file,
         headers: {
-          'Content-Type': 'multipart/form-data',
+          'Content-Type': file.type,
+        },
+        signal: source.token?.signal
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`S3 업로드 실패: ${uploadResponse.status} ${uploadResponse.statusText}`);
+      }
+
+      // 3단계: 백엔드에 메타데이터 등록
+      const registerUrl = this.baseUrl ?
+        `${this.baseUrl}/api/files/register` :
+        '/api/files/register';
+
+      const response = await axiosInstance.post(registerUrl, {
+        s3Key: s3Key,
+        originalName: file.name,
+        size: file.size,
+        mimeType: file.type
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
           'x-auth-token': token,
           'x-session-id': sessionId
         },
-        withCredentials: true,
-        cancelToken: source.token,
-        onUploadProgress: (progressEvent) => {
-          if (onProgress && progressEvent.total) {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-            onProgress(percentCompleted);
-          }
-        }
+        withCredentials: true
       });
 
       this.activeUploads.delete(file.name);
@@ -115,7 +138,7 @@ class FileService {
       if (!response.data || !response.data.success) {
         return {
           success: false,
-          message: response.data?.message || '파일 업로드에 실패했습니다.'
+          message: response.data?.message || '파일 등록에 실패했습니다.'
         };
       }
 
@@ -126,7 +149,7 @@ class FileService {
           ...response.data,
           file: {
             ...fileData,
-            url: this.getFileUrl(fileData.filename, true)
+            url: this.getPublicUrl(fileData.filename)
           }
         }
       };
@@ -232,6 +255,12 @@ class FileService {
   }
 
   getFileUrl(filename, forPreview = false) {
+    // S3 key인 경우 CloudFront/S3 URL 반환
+    if (filename && filename.startsWith('chat-files/')) {
+      return this.getPublicUrl(filename);
+    }
+
+    // 레거시 파일은 백엔드 API 사용
     if (!filename) return '';
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
     const endpoint = forPreview ? 'view' : 'download';
@@ -241,6 +270,12 @@ class FileService {
   getPreviewUrl(file, token, sessionId, withAuth = true) {
     if (!file?.filename) return '';
 
+    // S3 key인 경우 CloudFront/S3 URL 반환 (인증 불필요, 퍼블릭 버킷)
+    if (file.filename.startsWith('chat-files/')) {
+      return this.getPublicUrl(file.filename);
+    }
+
+    // 레거시 파일은 백엔드 API 사용
     const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/files/view/${file.filename}`;
 
     if (!withAuth) return baseUrl;
@@ -252,6 +287,16 @@ class FileService {
     url.searchParams.append('sessionId', encodeURIComponent(sessionId));
 
     return url.toString();
+  }
+
+  getPublicUrl(s3Key) {
+    if (!s3Key) return '';
+
+    // CloudFront URL 사용 (설정되지 않은 경우 S3 직접 URL로 폴백)
+    const baseUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ||
+                    `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com`;
+
+    return `${baseUrl}/${s3Key}`;
   }
 
   getFileType(filename) {
