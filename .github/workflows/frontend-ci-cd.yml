@@ -31,24 +31,18 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # [중요] 여기서 package.json에 cp 명령어가 잘 수정되어 있어야 합니다!
       - name: Build frontend (production)
         run: npm run build:production
         env:
-          # 빌드 타임에 환경변수 주입 (중요!)
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
           NEXT_PUBLIC_SOCKET_URL: ${{ secrets.NEXT_PUBLIC_SOCKET_URL }}
-
-      - name: Debug .next contents
-        run: |
-          echo "PWD: $(pwd)"
-          ls -R .
-          echo "---- .next ----"
-          ls -R .next || echo ".next not found"
 
       - name: Upload frontend build artifact
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build
+          # apps/frontend 경로를 포함해서 압축합니다.
           path: |
             apps/frontend/.next/standalone
             apps/frontend/.next/static
@@ -65,11 +59,14 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # [수정됨] path를 apps/frontend가 아니라 .(현재위치)로 변경
       - name: Download frontend artifact
         uses: actions/download-artifact@v4
         with:
           name: frontend-build
-          path: apps/frontend
+          path: .
+          # 이렇게 해야 apps/frontend 폴더 위에 덮어씌워지면서
+          # apps/frontend/.next/standalone 경로가 정상적으로 생성됩니다.
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -81,7 +78,6 @@ jobs:
       - name: Get frontend instance IPs by tags
         id: get_frontend_ips
         run: |
-          # PublicIpAddress를 가져오도록 설정됨
           IPS=$(aws ec2 describe-instances \
             --filters \
               "Name=tag:Service,Values=frontend" \
@@ -91,12 +87,10 @@ jobs:
             --query "Reservations[].Instances[].PublicIpAddress" \
             --output text)
 
-          echo "Frontend IPs: $IPS"
           if [ -z "$IPS" ]; then
-            echo "No frontend instances found with given tags"
+            echo "No frontend instances found"
             exit 1
           fi
-
           echo "ips=$IPS" >> $GITHUB_OUTPUT
 
       - name: Start SSH agent
@@ -111,19 +105,19 @@ jobs:
             ssh-keyscan -H "$ip" >> ~/.ssh/known_hosts 2>/dev/null || true
           done
 
+      # [디버깅] 실제 구조 확인 (이제 정상적으로 보일 것입니다)
       - name: Debug - List standalone files
         working-directory: apps/frontend
         run: |
-          echo "Checking standalone directory structure..."
-          ls -R .next/standalone
-          echo "Checking if BUILD_ID exists..."
-          ls -l .next/standalone/.next/BUILD_ID || echo "BUILD_ID is MISSING!"
+          echo "Checking structure..."
+          ls -R .next/standalone || echo "❌ Standalone folder not found!"
+          
+          echo "Checking manifests (Crucial for Start)..."
+          ls -l .next/standalone/.next/routes-manifest.json || echo "❌ routes-manifest.json MISSING (Fix package.json!)"
 
       - name: Deploy frontend via Makefile
         working-directory: apps/frontend
         env:
           DEPLOY_SERVERS: ${{ steps.get_frontend_ips.outputs.ips }}
           DEPLOY_PATH: /home/ubuntu/ktb-chat-frontend
-        run: |
-          echo "Deploying frontend to: $DEPLOY_SERVERS"
-          make deploy
+        run: make deploy
