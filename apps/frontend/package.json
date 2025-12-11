@@ -8,7 +8,7 @@
     "build": "next build",
     "start": "next start",
     "build:production": "npm run build && npm run deploy:static",
-    "deploy:static": "cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/"
+    "deploy:static": "mkdir -p .next/standalone/.next/static && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/ && cp .next/BUILD_ID .next/standalone/.next/ && cp .next/*.json .next/standalone/.next/"
   },
   "dependencies": {
     "@emoji-mart/data": "^1.1.2",
@@ -21,8 +21,8 @@
     "react-canvas-confetti": "^2.0.7",
     "react-dom": "^18.3.1",
     "react-toastify": "^10.0.6",
-    "react-window": "^2.2.3",
-    "socket.io-client": "^4.7.2"
+    "socket.io-client": "^4.7.2",
+    "ulid": "^3.0.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.0.0",

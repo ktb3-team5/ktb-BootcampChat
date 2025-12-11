@@ -1,6 +1,7 @@
 package com.ktb.chatapp.controller;
 
 import com.ktb.chatapp.dto.StandardResponse;
+import com.ktb.chatapp.dto.ProfileImageRegisterRequest;
 import com.ktb.chatapp.dto.ProfileImageResponse;
 import com.ktb.chatapp.dto.UpdateProfileRequest;
 import com.ktb.chatapp.dto.UserResponse;
@@ -101,9 +102,11 @@ public class UserController {
     }
 
     /**
-     * 프로필 이미지 업로드
+     * 프로필 이미지 업로드 (기존 방식)
+     * @deprecated S3 직접 업로드를 사용하세요. POST /api/users/profile-image/register
      */
-    @Operation(summary = "프로필 이미지 업로드", description = "프로필 이미지를 업로드합니다. 최대 5MB까지 가능합니다.")
+    @Deprecated
+    @Operation(summary = "프로필 이미지 업로드 (Deprecated)", description = "프로필 이미지를 업로드합니다. 최대 5MB까지 가능합니다. S3 직접 업로드 방식을 사용하세요.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "이미지 업로드 성공",
             content = @Content(schema = @Schema(implementation = ProfileImageResponse.class))),
@@ -137,6 +140,42 @@ public class UserController {
         } catch (Exception e) {
             log.error("프로필 이미지 업로드 중 오류 발생: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(StandardResponse.error("이미지 업로드 중 오류가 발생했습니다."));
+        }
+    }
+
+    /**
+     * 프로필 이미지 등록 (S3 key 기반)
+     */
+    @Operation(summary = "프로필 이미지 등록", description = "S3에 업로드된 이미지의 key를 등록합니다. 프론트엔드에서 S3에 직접 업로드 후 호출하세요.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "이미지 등록 성공",
+            content = @Content(schema = @Schema(implementation = ProfileImageResponse.class))),
+        @ApiResponse(responseCode = "400", description = "유효하지 않은 입력값",
+            content = @Content(schema = @Schema(implementation = StandardResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증 실패",
+            content = @Content(schema = @Schema(implementation = StandardResponse.class))),
+        @ApiResponse(responseCode = "404", description = "사용자를 찾을 수 없음",
+            content = @Content(schema = @Schema(implementation = StandardResponse.class))),
+        @ApiResponse(responseCode = "500", description = "서버 내부 오류",
+            content = @Content(schema = @Schema(implementation = StandardResponse.class)))
+    })
+    @PostMapping("/profile-image/register")
+    public ResponseEntity<?> registerProfileImage(
+            Principal principal,
+            @Valid @RequestBody ProfileImageRegisterRequest request) {
+
+        try {
+            ProfileImageResponse response = userService.registerProfileImage(principal.getName(), request);
+            return ResponseEntity.ok(response);
+        } catch (UsernameNotFoundException e) {
+            log.error("프로필 이미지 등록 실패 - 사용자 없음: {}", e.getMessage());
+            return ResponseEntity.status(404).body(StandardResponse.error("사용자를 찾을 수 없습니다."));
+        } catch (IllegalArgumentException e) {
+            log.error("프로필 이미지 등록 실패 - 잘못된 입력: {}", e.getMessage());
+            return ResponseEntity.badRequest().body(StandardResponse.error(e.getMessage()));
+        } catch (Exception e) {
+            log.error("프로필 이미지 등록 중 오류 발생: {}", e.getMessage(), e);
+            return ResponseEntity.internalServerError().body(StandardResponse.error("이미지 등록 중 오류가 발생했습니다."));
         }
     }
 

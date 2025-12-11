@@ -4,6 +4,7 @@ import { Button, Text, Callout, IconButton, VStack, HStack } from '@vapor-ui/cor
 import { useAuth } from '@/contexts/AuthContext';
 import CustomAvatar from '@/components/CustomAvatar';
 import { Toast } from '@/components/Toast';
+import { uploadProfileImageToS3, getS3ImageUrl } from '@/utils/s3Upload';
 
 const ProfileImageUpload = ({ currentImage, onImageChange }) => {
   const { user } = useAuth();
@@ -12,17 +13,10 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef(null);
 
-  // 프로필 이미지 URL 생성
-  const getProfileImageUrl = (imagePath) => {
-    if (!imagePath) return null;
-    return imagePath.startsWith('http') ? 
-      imagePath : 
-      `${process.env.NEXT_PUBLIC_API_URL}${imagePath}`;
-  };
-
   // 컴포넌트 마운트 시 이미지 설정
   useEffect(() => {
-    const imageUrl = getProfileImageUrl(currentImage);
+    // S3 key 또는 전체 URL을 S3 URL로 변환
+    const imageUrl = getS3ImageUrl(currentImage);
     setPreviewUrl(imageUrl);
   }, [currentImage]);
 
@@ -31,14 +25,9 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
     if (!file) return;
 
     try {
-      // 이미지 파일 검증
-      if (!file.type.startsWith('image/')) {
-        throw new Error('이미지 파일만 업로드할 수 있습니다.');
-      }
-
-      // 파일 크기 제한 (5MB)
-      if (file.size > 5 * 1024 * 1024) {
-        throw new Error('파일 크기는 5MB를 초과할 수 없습니다.');
+      // 인증 정보 확인
+      if (!user?.token || !user?.id) {
+        throw new Error('인증 정보가 없습니다.');
       }
 
       setUploading(true);
@@ -48,41 +37,36 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
       const objectUrl = URL.createObjectURL(file);
       setPreviewUrl(objectUrl);
 
-      // 인증 정보 확인
-      if (!user?.token) {
-        throw new Error('인증 정보가 없습니다.');
-      }
+      // 1단계: S3에 직접 업로드
+      const uploadResult = await uploadProfileImageToS3(file, user.id);
 
-      // FormData 생성
-      const formData = new FormData();
-      formData.append('profileImage', file);
-
-      // 파일 업로드 요청
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile-image`, {
+      // 2단계: 백엔드에 S3 key + 메타데이터 전송
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/users/profile-image/register`, {
         method: 'POST',
         headers: {
+          'Content-Type': 'application/json',
           'x-auth-token': user?.token,
           'x-session-id': user?.sessionId
         },
-        body: formData
+        body: JSON.stringify(uploadResult)
       });
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.message || '이미지 업로드에 실패했습니다.');
+        throw new Error(errorData.message || '이미지 등록에 실패했습니다.');
       }
 
       const data = await response.json();
-      
-      // 로컬 스토리지의 사용자 정보 업데이트
+
+      // 로컬 스토리지의 사용자 정보 업데이트 (S3 key 저장)
       const updatedUser = {
         ...user,
-        profileImage: data.imageUrl
+        profileImage: uploadResult.s3Key
       };
       localStorage.setItem('user', JSON.stringify(updatedUser));
 
-      // 부모 컴포넌트에 변경 알림
-      onImageChange(data.imageUrl);
+      // 부모 컴포넌트에 변경 알림 (S3 key 전달)
+      onImageChange(uploadResult.s3Key);
 
       Toast.success('프로필 이미지가 변경되었습니다.');
 
@@ -92,8 +76,8 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
     } catch (error) {
       console.error('Image upload error:', error);
       setError(error.message);
-      setPreviewUrl(getProfileImageUrl(currentImage));
-      
+      setPreviewUrl(getS3ImageUrl(currentImage));
+
       // 기존 objectUrl 정리
       if (previewUrl && previewUrl.startsWith('blob:')) {
         URL.revokeObjectURL(previewUrl);
