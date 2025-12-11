@@ -127,7 +127,7 @@ public class FileController {
             fileEntity.setOriginalname(request.getOriginalName());
             fileEntity.setMimetype(request.getMimeType());
             fileEntity.setSize(request.getSize());
-            fileEntity.setUploaderId(user.getId());
+            fileEntity.setUser(user.getId());
 
             File savedFile = fileRepository.save(fileEntity);
 
