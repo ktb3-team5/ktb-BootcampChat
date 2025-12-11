@@ -14,6 +14,7 @@ import com.ktb.chatapp.service.RateLimitService;
 import com.ktb.chatapp.service.SessionService;
 import com.ktb.chatapp.service.SessionValidationResult;
 import com.ktb.chatapp.util.BannedWordChecker;
+import com.ktb.chatapp.websocket.socketio.RedisEventPublisher;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.ai.AiService;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -38,7 +39,7 @@ import static org.mockito.Mockito.*;
 @ExtendWith(MockitoExtension.class)
 class ChatMessageHandlerTest {
 
-    @Mock private SocketIOServer socketIOServer;
+    @Mock private RedisEventPublisher redisEventPublisher;
     @Mock private EventExecutorGroup socketBizExecutor;
     @Mock private EventExecutorGroup socketAuxExecutor;
     @Mock private MessageRepository messageRepository;
@@ -57,6 +58,7 @@ class ChatMessageHandlerTest {
     void setUp() {
         handler =
                 new ChatMessageHandler(
+                        redisEventPublisher,
                         socketBizExecutor,
                         socketAuxExecutor,
                         messageRepository,
@@ -109,6 +111,5 @@ class ChatMessageHandlerTest {
         Map<String, String> payload = payloadCaptor.getValue();
         org.junit.jupiter.api.Assertions.assertEquals("MESSAGE_REJECTED", payload.get("code"));
         verifyNoInteractions(messageRepository);
-        verify(socketIOServer, never()).getRoomOperations(any());
     }
 }

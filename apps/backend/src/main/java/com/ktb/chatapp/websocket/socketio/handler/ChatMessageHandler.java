@@ -174,6 +174,7 @@ public class ChatMessageHandler {
 
             Message savedMessage = messageRepository.save(message);
 
+            client.sendEvent(MESSAGE, createMessageResponse(savedMessage, sender));
             redisEventPublisher.publish(MESSAGE, createMessageResponse(savedMessage, sender));
 
             socketAuxExecutor.submit(() -> aiService.handleAIMentions(roomId, socketUser.id(), messageContent));
