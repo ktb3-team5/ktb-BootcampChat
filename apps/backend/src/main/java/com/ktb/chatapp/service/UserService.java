@@ -1,5 +1,6 @@
 package com.ktb.chatapp.service;
 
+import com.ktb.chatapp.dto.ProfileImageRegisterRequest;
 import com.ktb.chatapp.dto.ProfileImageResponse;
 import com.ktb.chatapp.dto.UpdateProfileRequest;
 import com.ktb.chatapp.dto.UserResponse;
@@ -38,6 +39,9 @@ public class UserService {
     @Value("${app.profile.image.max-size:5242880}") // 5MB
     private long maxProfileImageSize;
 
+    @Value("${app.s3.base-url}")
+    private String s3BaseUrl;
+
     private static final List<String> ALLOWED_EXTENSIONS = Arrays.asList(
             "jpg", "jpeg", "png", "gif", "webp"
     );
@@ -71,8 +75,9 @@ public class UserService {
     }
 
     /**
-     * 프로필 이미지 업로드
+     * 프로필 이미지 업로드 (기존 방식 - 로컬 저장)
      * @param email 사용자 이메일
+     * @deprecated S3 직접 업로드를 사용하세요. {@link #registerProfileImage(String, ProfileImageRegisterRequest)}
      */
     public ProfileImageResponse uploadProfileImage(String email, MultipartFile file) {
         // 사용자 조회
@@ -101,6 +106,33 @@ public class UserService {
                 true,
                 "프로필 이미지가 업데이트되었습니다.",
                 profileImageUrl
+        );
+    }
+
+    /**
+     * 프로필 이미지 등록 (S3 key 기반)
+     * @param email 사용자 이메일
+     * @param request S3 key 및 메타데이터
+     */
+    public ProfileImageResponse registerProfileImage(String email, ProfileImageRegisterRequest request) {
+        // 사용자 조회
+        User user = userRepository.findByEmail(email.toLowerCase())
+                .orElseThrow(() -> new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
+
+        // S3 key를 DB에 저장
+        user.setProfileImage(request.getS3Key());
+        user.setUpdatedAt(LocalDateTime.now());
+        userRepository.save(user);
+
+        log.info("프로필 이미지 등록 완료 - User ID: {}, S3 Key: {}", user.getId(), request.getS3Key());
+
+        // 전체 URL 생성
+        String fullImageUrl = s3BaseUrl + "/" + request.getS3Key();
+
+        return new ProfileImageResponse(
+                true,
+                "프로필 이미지가 업데이트되었습니다.",
+                fullImageUrl
         );
     }
 
