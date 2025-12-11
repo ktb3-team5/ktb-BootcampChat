@@ -7,6 +7,7 @@ import com.ktb.chatapp.dto.MessageReactionRequest;
 import com.ktb.chatapp.dto.MessageReactionResponse;
 import com.ktb.chatapp.model.Message;
 import com.ktb.chatapp.repository.MessageRepository;
+import com.ktb.chatapp.websocket.socketio.RedisEventPublisher;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import java.util.Map;
 
@@ -27,11 +28,13 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 @ConditionalOnProperty(name = "socketio.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class MessageReactionHandler {
-    
+
+    private final RedisEventPublisher eventPublisher;
     private final SocketIOServer socketIOServer;
     private final EventExecutorGroup socketBizExecutor;
     private final MessageRepository messageRepository;
-    
+    private final RedisEventPublisher redisEventPublisher;
+
     @OnEvent(MESSAGE_REACTION)
     public void handleMessageReaction(SocketIOClient client, MessageReactionRequest data) {
         String userId = getUserId(client);
@@ -66,12 +69,12 @@ public class MessageReactionHandler {
             messageRepository.save(message);
 
             MessageReactionResponse response = new MessageReactionResponse(
+                    message.getRoomId(),
                     message.getId(),
                     message.getReactions()
             );
 
-            socketIOServer.getRoomOperations(message.getRoomId())
-                    .sendEvent(MESSAGE_REACTION_UPDATE, response);
+            eventPublisher.publish(MESSAGE_REACTION_UPDATE, response);
 
         } catch (Exception e) {
             log.error("Error handling messageReaction", e);

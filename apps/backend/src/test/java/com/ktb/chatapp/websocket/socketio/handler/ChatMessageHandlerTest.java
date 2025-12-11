@@ -57,7 +57,6 @@ class ChatMessageHandlerTest {
     void setUp() {
         handler =
                 new ChatMessageHandler(
-                        socketIOServer,
                         socketBizExecutor,
                         socketAuxExecutor,
                         messageRepository,

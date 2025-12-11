@@ -1,19 +1,15 @@
 package com.ktb.chatapp.websocket.socketio.handler;
 
 import com.corundumstudio.socketio.SocketIOClient;
-import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.annotation.OnEvent;
-import com.ktb.chatapp.dto.ChatMessageRequest;
-import com.ktb.chatapp.dto.FileResponse;
-import com.ktb.chatapp.dto.MessageContent;
-import com.ktb.chatapp.dto.MessageResponse;
-import com.ktb.chatapp.dto.UserResponse;
+import com.ktb.chatapp.dto.*;
 import com.ktb.chatapp.model.*;
 import com.ktb.chatapp.repository.FileRepository;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.util.BannedWordChecker;
+import com.ktb.chatapp.websocket.socketio.RedisEventPublisher;
 import com.ktb.chatapp.websocket.socketio.ai.AiService;
 import com.ktb.chatapp.service.SessionService;
 import com.ktb.chatapp.service.SessionValidationResult;
@@ -40,7 +36,7 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 @ConditionalOnProperty(name = "socketio.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class ChatMessageHandler {
-    private final SocketIOServer socketIOServer;
+    private final RedisEventPublisher redisEventPublisher;
     private final EventExecutorGroup socketBizExecutor;
     private final EventExecutorGroup socketAuxExecutor;
     private final MessageRepository messageRepository;
@@ -178,8 +174,7 @@ public class ChatMessageHandler {
 
             Message savedMessage = messageRepository.save(message);
 
-            socketIOServer.getRoomOperations(roomId)
-                    .sendEvent(MESSAGE, createMessageResponse(savedMessage, sender));
+            redisEventPublisher.publish(MESSAGE, createMessageResponse(savedMessage, sender));
 
             socketAuxExecutor.submit(() -> aiService.handleAIMentions(roomId, socketUser.id(), messageContent));
             socketAuxExecutor.submit(() -> sessionService.updateLastActivity(socketUser.id()));
