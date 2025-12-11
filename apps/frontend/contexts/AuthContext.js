@@ -152,7 +152,7 @@ export const AuthProvider = ({ children }) => {
       saveUser(null);
 
       // 로그인 페이지로 이동
-      router.replace("/");
+      router.push("/");
     }
   }, [user, saveUser, router]);
 
