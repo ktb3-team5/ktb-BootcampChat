@@ -40,7 +40,7 @@ public class SocketIOConfig {
         com.corundumstudio.socketio.Configuration config = new com.corundumstudio.socketio.Configuration();
         config.setHostname(host);
         config.setPort(port);
-        
+
         var socketConfig = new SocketConfig();
         socketConfig.setReuseAddress(true);
         socketConfig.setTcpNoDelay(false);
@@ -56,6 +56,7 @@ public class SocketIOConfig {
         config.setPingInterval(25000);
         config.setUpgradeTimeout(10000);
 
+        // Java 8 date/time 모듈 등록
         config.setJsonSupport(new JacksonJsonSupport(new JavaTimeModule()));
         config.setStoreFactory(new MemoryStoreFactory()); // 단일노드 전용
 
@@ -63,7 +64,7 @@ public class SocketIOConfig {
                  host, port, config.getBossThreads(), config.getWorkerThreads());
         var socketIOServer = new SocketIOServer(config);
         socketIOServer.getNamespace(Namespace.DEFAULT_NAME).addAuthTokenListener(authTokenListener);
-        
+
         return socketIOServer;
     }
 
