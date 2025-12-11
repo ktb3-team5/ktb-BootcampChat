@@ -1,129 +1,96 @@
-name: Frontend CI/CD
+name: Frontend Docker CI/CD
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "feature/cicd" ]
     paths:
       - "apps/frontend/**"
       - ".github/workflows/frontend-ci-cd.yml"
   workflow_dispatch: {}
 
 env:
-  AWS_REGION: ${{ secrets.AWS_REGION }}
+  # [수정] 대문자 이슈 해결을 위해 직접 이름을 지정합니다.
+  IMAGE_NAME: fakerkor/ktb-chat-frontend
 
 jobs:
-  frontend-ci:
-    name: Frontend Build
+  build-and-push:
+    name: Build Docker Image
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: apps/frontend
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
         with:
-          node-version: "20"
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build frontend (production)
-        run: npm run build:production
-        env:
-          # 빌드 타임에 환경변수 주입 (중요)
-          NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
-          NEXT_PUBLIC_SOCKET_URL: ${{ secrets.NEXT_PUBLIC_SOCKET_URL }}
-
-      - name: Debug .next contents
-        run: |
-          echo "PWD: $(pwd)"
-          ls -R .
-          echo "---- .next ----"
-          ls -R .next || echo ".next not found"
-
-      - name: Upload frontend build artifact
-        uses: actions/upload-artifact@v4
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
         with:
-          name: frontend-build
-          path: |
-            apps/frontend/.next/standalone
-            apps/frontend/.next/static
-            apps/frontend/public
-            apps/frontend/restart.sh
+          context: apps/frontend
+          push: true
+          # 태그도 심플하게 latest만 씁니다
+          tags: ${{ env.IMAGE_NAME }}:latest
+          # 빌드 아규먼트 (Next.js 환경변수용)
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ secrets.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_SOCKET_URL=${{ secrets.NEXT_PUBLIC_SOCKET_URL }}
 
-  frontend-deploy:
-    name: Frontend Deploy to EC2
+  deploy-to-ec2:
+    name: Deploy to EC2
+    needs: build-and-push
     runs-on: ubuntu-latest
-    needs: frontend-ci
-    if: github.ref == 'refs/heads/main'
+    # 테스트 중이니 if 조건은 주석 처리 유지 혹은 제거
+    # if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Download frontend artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: frontend-build
-          path: apps/frontend
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Get frontend instance IPs by tags
-        id: get_frontend_ips
+      - name: Get frontend instance IPs
+        id: get_ips
         run: |
-          # PublicIpAddress를 가져오도록 설정됨
           IPS=$(aws ec2 describe-instances \
-            --filters \
-              "Name=tag:Service,Values=frontend" \
-              "Name=tag:Env,Values=prod" \
-              "Name=tag:AutoDeploy,Values=true" \
-              "Name=instance-state-name,Values=running" \
-            --query "Reservations[].Instances[].PublicIpAddress" \
-            --output text)
+            --filters "Name=tag:Service,Values=frontend" "Name=instance-state-name,Values=running" \
+            --query "Reservations[].Instances[].PublicIpAddress" --output text)
+          
+          IPS_COMMA=$(echo $IPS | tr ' ' ',')
+          echo "Target IPs: $IPS_COMMA"
+          echo "ips=$IPS_COMMA" >> $GITHUB_OUTPUT
 
-          echo "Frontend IPs: $IPS"
-          if [ -z "$IPS" ]; then
-            echo "No frontend instances found with given tags"
-            exit 1
-          fi
-
-          echo "ips=$IPS" >> $GITHUB_OUTPUT
-
-      - name: Start SSH agent
-        uses: webfactory/ssh-agent@v0.9.0
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@master
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Add frontend hosts to known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          for ip in ${{ steps.get_frontend_ips.outputs.ips }}; do
-            ssh-keyscan -H "$ip" >> ~/.ssh/known_hosts 2>/dev/null || true
-          done
-
-      - name: Debug - List standalone files
-        working-directory: apps/frontend
-        run: |
-          echo "Checking standalone directory structure..."
-          ls -R .next/standalone
-          echo "Checking if BUILD_ID exists..."
-          ls -l .next/standalone/.next/BUILD_ID || echo "BUILD_ID is MISSING!"
-
-      - name: Deploy frontend via Makefile
-        working-directory: apps/frontend
-        env:
-          DEPLOY_SERVERS: ${{ steps.get_frontend_ips.outputs.ips }}
-          DEPLOY_PATH: /home/ubuntu/ktb-chat-frontend
-        run: |
-          echo "Deploying frontend to: $DEPLOY_SERVERS"
-          make deploy
+          host: ${{ steps.get_ips.outputs.ips }}
+          username: ubuntu
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          timeout: 60s
+          script: |
+            # [수정됨] 모든 명령어 앞에 sudo 추가 (권한 문제 강제 해결)
+            
+            # 1. Docker Hub 로그인
+            echo ${{ secrets.DOCKER_PASSWORD }} | sudo docker login -u ${{ secrets.DOCKER_USERNAME }} --password-stdin
+            
+            # 2. 최신 이미지 풀링
+            sudo docker pull ${{ env.IMAGE_NAME }}:latest
+            
+            # 3. 기존 컨테이너 정리
+            sudo docker stop frontend-app || true
+            sudo docker rm frontend-app || true
+            
+            # 4. 컨테이너 실행
+            sudo docker run -d \
+              --name frontend-app \
+              -p 3000:3000 \
+              --restart unless-stopped \
+              ${{ env.IMAGE_NAME }}:latest
+            
+            # 5. 청소
+            sudo docker image prune -f

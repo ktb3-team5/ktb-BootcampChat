@@ -80,7 +80,7 @@ if ps -p "$NEW_PID" > /dev/null 2>&1; then
     echo "Recent logs:"
     tail -n 20 "$LOG_FILE"
 else
-    echo "❌ Failed to start server"
+    echo "❌  Failed to start server"
     echo "📋 Check $LOG_FILE for details"
     echo ""
     echo "Recent logs:"
