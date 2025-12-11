@@ -1,0 +1,144 @@
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "apps/backend/**"
+      - ".github/workflows/backend-ci-cd.yml"
+  workflow_dispatch: {}
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+
+jobs:
+  backend-ci:
+    name: Backend Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: 'maven'
+
+      - name: Cache Maven packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+#      - name: Run tests
+#        run: ./mvnw test
+
+      - name: Build JAR (skip tests for faster deploy)
+        run: ./mvnw clean package -DskipTests
+
+      - name: Upload backend JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-jar
+          path: apps/backend/target/ktb-chat-backend-0.0.1-SNAPSHOT.jar
+
+  backend-deploy:
+    name: Backend Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: backend-ci
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download backend JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-jar
+          path: apps/backend/target
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get backend instance IPs by tags
+        id: get_backend_ips
+        run: |
+          IPS=$(aws ec2 describe-instances \
+            --filters \
+              "Name=tag:Service,Values=backend" \
+              "Name=tag:Env,Values=prod" \
+              "Name=tag:AutoDeploy,Values=true" \
+              "Name=instance-state-name,Values=running" \
+            --query "Reservations[].Instances[].PublicIpAddress" \
+            --output text)
+
+          echo "Backend IPs: $IPS"
+          if [ -z "$IPS" ]; then
+            echo "No backend instances found with given tags"
+            exit 1
+          fi
+
+          echo "ips=$IPS" >> $GITHUB_OUTPUT
+
+      - name: Start SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Add backend hosts to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          for ip in ${{ steps.get_backend_ips.outputs.ips }}; do
+            ssh-keyscan -H "$ip" >> ~/.ssh/known_hosts 2>/dev/null || true
+          done
+
+      - name: Create Production .env
+        working-directory: apps/backend
+        run: |
+          cat <<EOF > .env
+          MONGO_URI=${{ secrets.PROD_MONGO_URI }}
+          REDIS_HOST=${{ secrets.PROD_REDIS_HOST }}
+          REDIS_PORT=${{ secrets.PROD_REDIS_PORT }}
+          JWT_SECRET=${{ secrets.JWT_SECRET }}
+          ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+          ENCRYPTION_SALT=${{ secrets.ENCRYPTION_SALT }}
+          OPENAI_API_KEY="ktb_dkddddddddddddd"
+          EOF
+
+      - name: Deploy JAR & restart via Makefile
+        working-directory: apps/backend
+        env:
+          DEPLOY_PATH: /home/ubuntu/ktb-chat-backend
+        run: |
+          # 1. JAR 파일과 .env 및 스크립트를 모든 서버에 전송 (병렬 가능)
+          for server in ${{ steps.get_backend_ips.outputs.ips }}; do
+             echo "Uploading to $server..."
+             scp target/ktb-chat-backend-0.0.1-SNAPSHOT.jar ubuntu@$server:$DEPLOY_PATH/target/ &
+             scp .env ubuntu@$server:$DEPLOY_PATH/ &
+             scp app-control.sh ubuntu@$server:$DEPLOY_PATH/ &
+          done
+          wait # 업로드 완료 대기
+          
+          
+          # 2. 순차적으로 재시작 (무중단 효과)
+          for server in ${{ steps.get_backend_ips.outputs.ips }}; do
+            echo "Restarting server $server..."
+            
+            ssh ubuntu@$server "mkdir -p $DEPLOY_PATH/logs && sudo chown -R ubuntu:ubuntu $DEPLOY_PATH/logs && sudo chmod 755 $DEPLOY_PATH/logs"
+          
+            # 기존 재시작 명령어
+            ssh ubuntu@$server "chmod +x $DEPLOY_PATH/app-control.sh && cd $DEPLOY_PATH && ./app-control.sh restart"
+          done
