@@ -1,6 +1,7 @@
 import axios, { isCancel, CancelToken } from 'axios';
 import axiosInstance from './axios';
 import { Toast } from '../components/Toast';
+import { ulid } from 'ulid';
 
 class FileService {
   constructor() {
@@ -81,32 +82,47 @@ class FileService {
     }
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      // 1단계: S3 key 생성
+      const extension = file.name.split('.').pop().toLowerCase();
+      const fileName = `${ulid()}.${extension}`;
+      const s3Key = `chat-files/${Date.now()}_${fileName}`;
+
+      // 2단계: S3에 직접 업로드
+      const s3Url = `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${s3Key}`;
 
       const source = CancelToken.source();
       this.activeUploads.set(file.name, source);
 
-      const uploadUrl = this.baseUrl ?
-        `${this.baseUrl}/api/files/upload` :
-        '/api/files/upload';
-
-      // token과 sessionId는 axios 인터셉터에서 자동으로 추가되므로
-      // 여기서는 명시적으로 전달하지 않아도 됩니다
-      const response = await axiosInstance.post(uploadUrl, formData, {
+      const uploadResponse = await fetch(s3Url, {
+        method: 'PUT',
+        body: file,
         headers: {
-          'Content-Type': 'multipart/form-data'
+          'Content-Type': file.type,
         },
-        cancelToken: source.token,
-        withCredentials: true,
-        onUploadProgress: (progressEvent) => {
-          if (onProgress) {
-            const percentCompleted = Math.round(
-              (progressEvent.loaded * 100) / progressEvent.total
-            );
-            onProgress(percentCompleted);
-          }
-        }
+        signal: source.token?.signal
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`S3 업로드 실패: ${uploadResponse.status} ${uploadResponse.statusText}`);
+      }
+
+      // 3단계: 백엔드에 메타데이터 등록
+      const registerUrl = this.baseUrl ?
+        `${this.baseUrl}/api/files/register` :
+        '/api/files/register';
+
+      const response = await axiosInstance.post(registerUrl, {
+        s3Key: s3Key,
+        originalName: file.name,
+        size: file.size,
+        mimeType: file.type
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-token': token,
+          'x-session-id': sessionId
+        },
+        withCredentials: true
       });
 
       this.activeUploads.delete(file.name);
@@ -114,7 +130,7 @@ class FileService {
       if (!response.data || !response.data.success) {
         return {
           success: false,
-          message: response.data?.message || '파일 업로드에 실패했습니다.'
+          message: response.data?.message || '파일 등록에 실패했습니다.'
         };
       }
 
@@ -125,7 +141,7 @@ class FileService {
           ...response.data,
           file: {
             ...fileData,
-            url: this.getFileUrl(fileData.filename, true)
+            url: this.getPublicUrl(fileData.filename)
           }
         }
       };
@@ -231,8 +247,13 @@ class FileService {
   }
 
   getFileUrl(filename, forPreview = false) {
-    if (!filename) return '';
+    // S3 key인 경우 CloudFront/S3 URL 반환
+    if (filename && filename.startsWith('chat-files/')) {
+      return this.getPublicUrl(filename);
+    }
 
+    // 레거시 파일은 백엔드 API 사용
+    if (!filename) return '';
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
     const endpoint = forPreview ? 'view' : 'download';
     return `${baseUrl}/api/files/${endpoint}/${filename}`;
@@ -241,18 +262,33 @@ class FileService {
   getPreviewUrl(file, token, sessionId, withAuth = true) {
     if (!file?.filename) return '';
 
+    // S3 key인 경우 CloudFront/S3 URL 반환 (인증 불필요, 퍼블릭 버킷)
+    if (file.filename.startsWith('chat-files/')) {
+      return this.getPublicUrl(file.filename);
+    }
+
+    // 레거시 파일은 백엔드 API 사용
     const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/files/view/${file.filename}`;
 
     if (!withAuth) return baseUrl;
 
     if (!token || !sessionId) return baseUrl;
 
-    // URL 객체 생성 전 프로토콜 확인
     const url = new URL(baseUrl);
     url.searchParams.append('token', encodeURIComponent(token));
     url.searchParams.append('sessionId', encodeURIComponent(sessionId));
 
     return url.toString();
+  }
+
+  getPublicUrl(s3Key) {
+    if (!s3Key) return '';
+
+    // CloudFront URL 사용 (설정되지 않은 경우 S3 직접 URL로 폴백)
+    const baseUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ||
+                    `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com`;
+
+    return `${baseUrl}/${s3Key}`;
   }
 
   getFileType(filename) {
