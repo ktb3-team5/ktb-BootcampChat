@@ -81,6 +81,14 @@ class FileService {
       return validationResult;
     }
 
+    // 환경 변수 검증
+    if (!process.env.NEXT_PUBLIC_S3_BUCKET_NAME || !process.env.NEXT_PUBLIC_AWS_REGION) {
+      return {
+        success: false,
+        message: 'S3 설정이 올바르지 않습니다. 관리자에게 문의하세요.'
+      };
+    }
+
     try {
       // 1단계: S3 key 생성
       const extension = file.name.split('.').pop().toLowerCase();
