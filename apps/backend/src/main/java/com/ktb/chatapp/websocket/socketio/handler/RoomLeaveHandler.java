@@ -4,6 +4,8 @@ import com.corundumstudio.socketio.SocketIOClient;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.annotation.OnEvent;
 import com.ktb.chatapp.dto.MessageResponse;
+import com.ktb.chatapp.dto.ParticipantsUpdateResponse;
+import com.ktb.chatapp.dto.UserLeftResponse;
 import com.ktb.chatapp.dto.UserResponse;
 import com.ktb.chatapp.model.Message;
 import com.ktb.chatapp.model.MessageType;
@@ -12,6 +14,7 @@ import com.ktb.chatapp.model.User;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
+import com.ktb.chatapp.websocket.socketio.RedisEventPublisher;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
 import java.time.LocalDateTime;
@@ -38,6 +41,7 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 @RequiredArgsConstructor
 public class RoomLeaveHandler {
 
+    private final RedisEventPublisher redisEventPublisher;
     private final SocketIOServer socketIOServer;
     private final EventExecutorGroup socketBizExecutor;
     private final MessageRepository messageRepository;
@@ -85,11 +89,8 @@ public class RoomLeaveHandler {
 
             sendSystemMessage(roomId, userName + "님이 퇴장하였습니다.");
             broadcastParticipantList(roomId);
-            socketIOServer.getRoomOperations(roomId)
-                    .sendEvent(USER_LEFT, Map.of(
-                            "userId", userId,
-                            "userName", userName
-                    ));
+
+            redisEventPublisher.publish(USER_LEFT, new UserLeftResponse(roomId, userId, userName));
 
         } catch (Exception e) {
             log.error("Error handling leaveRoom", e);
@@ -113,8 +114,7 @@ public class RoomLeaveHandler {
             Message savedMessage = messageRepository.save(systemMessage);
             MessageResponse response = messageResponseMapper.mapToMessageResponse(savedMessage, null);
 
-            socketIOServer.getRoomOperations(roomId)
-                    .sendEvent(MESSAGE, response);
+            redisEventPublisher.publish(MESSAGE, response);
 
         } catch (Exception e) {
             log.error("Error sending system message", e);
@@ -139,9 +139,11 @@ public class RoomLeaveHandler {
         if (participantList.isEmpty()) {
             return;
         }
-        
-        socketIOServer.getRoomOperations(roomId)
-                .sendEvent(PARTICIPANTS_UPDATE, participantList);
+
+        redisEventPublisher.publish(
+                PARTICIPANTS_UPDATE,
+                new ParticipantsUpdateResponse(roomId, participantList)
+        );
     }
 
     private SocketUser getUserDto(SocketIOClient client) {

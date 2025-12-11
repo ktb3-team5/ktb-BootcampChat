@@ -7,10 +7,10 @@ import lombok.NoArgsConstructor;
 import java.util.List;
 
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
-public class MessagesReadResponse {
+@NoArgsConstructor
+public class ParticipantsUpdateResponse {
     private String roomId;
-    private String userId;
-    private List<String> messageIds;
+    private List<UserResponse> participants;
 }
+

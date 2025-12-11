@@ -12,6 +12,7 @@ import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.MessageReadStatusService;
+import com.ktb.chatapp.websocket.socketio.RedisEventPublisher;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import java.util.Map;
 
@@ -32,7 +33,8 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 @ConditionalOnProperty(name = "socketio.enabled", havingValue = "true", matchIfMissing = true)
 @RequiredArgsConstructor
 public class MessageReadHandler {
-    
+
+    private final RedisEventPublisher redisEventPublisher;
     private final SocketIOServer socketIOServer;
     private final EventExecutorGroup socketBizExecutor;
     private final MessageReadStatusService messageReadStatusService;
@@ -79,11 +81,10 @@ public class MessageReadHandler {
 
             messageReadStatusService.updateReadStatus(data.getMessageIds(), userId);
 
-            MessagesReadResponse response = new MessagesReadResponse(userId, data.getMessageIds());
+            MessagesReadResponse response = new MessagesReadResponse(roomId, userId, data.getMessageIds());
 
             // Broadcast to room
-            socketIOServer.getRoomOperations(roomId)
-                    .sendEvent(MESSAGES_READ, response);
+            redisEventPublisher.publish(MESSAGES_READ, response);
 
         } catch (Exception e) {
             log.error("Error handling markMessagesAsRead", e);

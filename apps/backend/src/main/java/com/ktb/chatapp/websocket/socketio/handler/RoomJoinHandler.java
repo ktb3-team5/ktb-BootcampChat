@@ -3,16 +3,14 @@ package com.ktb.chatapp.websocket.socketio.handler;
 import com.corundumstudio.socketio.SocketIOClient;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.annotation.OnEvent;
-import com.ktb.chatapp.dto.FetchMessagesRequest;
-import com.ktb.chatapp.dto.FetchMessagesResponse;
-import com.ktb.chatapp.dto.JoinRoomSuccessResponse;
-import com.ktb.chatapp.dto.UserResponse;
+import com.ktb.chatapp.dto.*;
 import com.ktb.chatapp.model.Message;
 import com.ktb.chatapp.model.MessageType;
 import com.ktb.chatapp.model.Room;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.RoomRepository;
 import com.ktb.chatapp.repository.UserRepository;
+import com.ktb.chatapp.websocket.socketio.RedisEventPublisher;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
 import java.time.LocalDateTime;
@@ -36,6 +34,7 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 @RequiredArgsConstructor
 public class RoomJoinHandler {
 
+    private final RedisEventPublisher redisEventPublisher;
     private final SocketIOServer socketIOServer;
     private final EventExecutorGroup socketBizExecutor;
     private final EventExecutorGroup socketAuxExecutor;
@@ -132,14 +131,11 @@ public class RoomJoinHandler {
             client.sendEvent(JOIN_ROOM_SUCCESS, response);
 
             // 입장 메시지 브로드캐스트
-            socketIOServer.getRoomOperations(roomId)
-                    .sendEvent(MESSAGE, messageResponseMapper.mapToMessageResponse(joinMessage, null));
+            redisEventPublisher.publish(MESSAGE, messageResponseMapper.mapToMessageResponse(joinMessage, null));
 
             // 참가자 목록 업데이트 브로드캐스트
             socketAuxExecutor.submit(() -> {
-                socketIOServer.getRoomOperations(roomId)
-                        .sendEvent(PARTICIPANTS_UPDATE, participants);
-
+                redisEventPublisher.publish(PARTICIPANTS_UPDATE, new ParticipantsUpdateResponse(roomId, participants));
                 log.info("User {} joined room {} successfully. Message count: {}, hasMore: {}",
                         userName, roomId, messageLoadResult.getMessages().size(), messageLoadResult.isHasMore());
             });
