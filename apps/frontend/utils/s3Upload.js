@@ -11,6 +11,11 @@ export async function uploadProfileImageToS3(file, userId) {
     throw new Error('파일이 제공되지 않았습니다.');
   }
 
+  // 환경 변수 검증
+  if (!process.env.NEXT_PUBLIC_S3_BUCKET_NAME || !process.env.NEXT_PUBLIC_AWS_REGION) {
+    throw new Error('S3 설정이 올바르지 않습니다. 관리자에게 문의하세요.');
+  }
+
   // 이미지 파일 검증
   if (!file.type.startsWith('image/')) {
     throw new Error('이미지 파일만 업로드할 수 있습니다.');
@@ -99,6 +104,11 @@ function getImageDimensions(file) {
  */
 export function getS3ImageUrl(s3Key) {
   if (!s3Key) return null;
+
+  // 이전 파일 시스템 경로는 무시 (더 이상 사용되지 않음)
+  if (s3Key.includes('/api/files/view/')) {
+    return null;
+  }
 
   // 이미 전체 URL인 경우
   if (s3Key.startsWith('http://') || s3Key.startsWith('https://')) {
