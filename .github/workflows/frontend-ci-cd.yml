@@ -2,7 +2,7 @@ name: Frontend Docker CI/CD
 
 on:
   push:
-    branches: [ "main", "feature/cicd" ]
+    branches: [ "main" ]
     paths:
       - "apps/frontend/**"
       - ".github/workflows/frontend-ci-cd.yml"
