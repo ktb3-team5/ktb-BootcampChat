@@ -116,8 +116,8 @@ class FileService {
 
       // 3단계: 백엔드에 메타데이터 등록
       const registerUrl = this.baseUrl ?
-        `${this.baseUrl}/api/files/register` :
-        '/api/files/register';
+        `${this.baseUrl}/api/files/upload` :
+        '/api/files/upload';
 
       const response = await axiosInstance.post(registerUrl, {
         s3Key: s3Key,
