@@ -2,7 +2,7 @@ name: Frontend Docker CI/CD
 
 on:
   push:
-    branches: [ "main", "feature/cicd" ]
+    branches: [ "main" ]
     paths:
       - "apps/frontend/**"
       - ".github/workflows/frontend-ci-cd.yml"
@@ -44,7 +44,6 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     # 테스트 중이니 if 조건은 주석 처리 유지 혹은 제거
-    # if: github.ref == 'refs/heads/main'
 
     steps:
       - name: Configure AWS credentials
