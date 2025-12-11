@@ -19,7 +19,7 @@ const CLEANUP_REASONS = {
 
 export const useChatRoom = () => {
   const router = useRouter();
-  const roomId = router.query.room; // ✅ 공통 deps로 사용할 roomId
+  const roomId = router.query.room;
   const { user: authUser, logout } = useAuth();
 
   const [room, setRoom] = useState(null);
@@ -47,6 +47,11 @@ export const useChatRoom = () => {
   const initialLoadCompletedRef = useRef(false);
   const processedMessageIds = useRef(new Set());
   const loadMoreTimeoutRef = useRef(null);
+
+  // ⭐ 추가 최적화용 Refs
+  const socketListenersAttachedRef = useRef(false);
+  const incomingMessageQueueRef = useRef([]);
+  const flushMessagesTimeoutRef = useRef(null);
 
   const {
     connected,
@@ -90,7 +95,9 @@ export const useChatRoom = () => {
     setLoadingMessages
   );
 
-  // ✅ cleanup 은 이미 useCallback + stable deps 라서 OK
+  // ---------------------------------------------------
+  // ✅ 최적화 5: cleanup 최소화 + 중복 방지
+  // ---------------------------------------------------
   const cleanup = useCallback(
     (reason = "MANUAL") => {
       if (!mountedRef.current || !roomId) return;
@@ -113,6 +120,15 @@ export const useChatRoom = () => {
           socketRef.current.off("session_ended");
           socketRef.current.off("error");
         }
+
+        // socket listener 플래그 초기화
+        socketListenersAttachedRef.current = false;
+
+        if (flushMessagesTimeoutRef.current) {
+          clearTimeout(flushMessagesTimeoutRef.current);
+          flushMessagesTimeoutRef.current = null;
+        }
+        incomingMessageQueueRef.current = [];
 
         if (loadMoreTimeoutRef.current) {
           clearTimeout(loadMoreTimeoutRef.current);
@@ -155,6 +171,9 @@ export const useChatRoom = () => {
   const { handleReactionAdd, handleReactionRemove, handleReactionUpdate } =
     useReactionHandling(socketRef, currentUser, messages, setMessages);
 
+  // ---------------------------------------------------
+  // ✅ 최적화 1: 메시지 정리/중복 제거 + 변경 없을 때 setMessages 스킵
+  // ---------------------------------------------------
   const processMessages = useCallback(
     (loadedMessages, hasMore, isInitialLoad = false) => {
       try {
@@ -163,20 +182,36 @@ export const useChatRoom = () => {
         }
 
         setMessages((prev) => {
+          if (!mountedRef.current) return prev;
+
+          // 새 메시지 중복 필터링
           const newMessages = loadedMessages.filter((msg) => {
-            if (!msg._id) return false;
+            if (!msg?._id) return false;
             if (processedMessageIds.current.has(msg._id)) return false;
             processedMessageIds.current.add(msg._id);
             return true;
           });
 
-          const allMessages = [...prev, ...newMessages].sort(
-            (a, b) => new Date(a.timestamp || 0) - new Date(b.timestamp || 0)
-          );
+          if (newMessages.length === 0) {
+            // 더 들어올 게 없으면 굳이 새 배열 만들지 않음
+            return prev;
+          }
 
           const map = new Map();
-          allMessages.forEach((msg) => map.set(msg._id, msg));
-          return Array.from(map.values());
+          prev.forEach((msg) => {
+            if (msg?._id) map.set(msg._id, msg);
+          });
+          newMessages.forEach((msg) => {
+            if (msg?._id) map.set(msg._id, msg);
+          });
+
+          const merged = Array.from(map.values()).sort(
+            (a, b) =>
+              new Date(a.timestamp || 0).getTime() -
+              new Date(b.timestamp || 0).getTime()
+          );
+
+          return merged;
         });
 
         setHasMoreMessages(hasMore);
@@ -190,8 +225,88 @@ export const useChatRoom = () => {
     [setMessages, setHasMoreMessages]
   );
 
+  // ---------------------------------------------------
+  // ✅ 최적화 3: 실시간 message 이벤트 batching
+  // ---------------------------------------------------
+  const flushIncomingMessages = useCallback(() => {
+    if (!mountedRef.current) return;
+    const queue = incomingMessageQueueRef.current;
+    if (!queue.length) return;
+
+    const batch = [...queue];
+    incomingMessageQueueRef.current = [];
+    flushMessagesTimeoutRef.current = null;
+
+    setMessages((prev) => {
+      if (!mountedRef.current) return prev;
+
+      const map = new Map();
+      prev.forEach((msg) => {
+        if (msg?._id) map.set(msg._id, msg);
+      });
+
+      let hasNew = false;
+      batch.forEach((msg) => {
+        if (!msg?._id) return;
+        if (!map.has(msg._id)) {
+          map.set(msg._id, msg);
+          hasNew = true;
+        }
+      });
+
+      if (!hasNew) return prev;
+
+      const merged = Array.from(map.values()).sort(
+        (a, b) =>
+          new Date(a.timestamp || 0).getTime() -
+          new Date(b.timestamp || 0).getTime()
+      );
+
+      return merged;
+    });
+  }, [setMessages]);
+
+  const enqueueIncomingMessage = useCallback(
+    (message) => {
+      if (!message?._id) return;
+      if (processedMessageIds.current.has(message._id)) return;
+      processedMessageIds.current.add(message._id);
+
+      incomingMessageQueueRef.current.push(message);
+
+      if (!flushMessagesTimeoutRef.current) {
+        // 다음 프레임 또는 짧은 timeout에 한 번에 처리
+        flushMessagesTimeoutRef.current = setTimeout(() => {
+          flushIncomingMessages();
+        }, 0);
+      }
+    },
+    [flushIncomingMessages]
+  );
+
+  // ---------------------------------------------------
+  // ✅ 최적화 4: previousMessages idle 처리
+  // ---------------------------------------------------
+  const runInIdle = useCallback((cb) => {
+    if (typeof window === "undefined") {
+      cb();
+      return;
+    }
+
+    const win = window;
+    const idle = win.requestIdleCallback || ((fn) => setTimeout(fn, 0));
+    idle(() => {
+      if (!mountedRef.current) return;
+      cb();
+    });
+  }, []);
+
   const setupEventListeners = useCallback(() => {
     if (!socketRef.current || !mountedRef.current) return;
+
+    // 이미 리스너 붙었으면 다시 붙이지 않음
+    if (socketListenersAttachedRef.current) return;
+    socketListenersAttachedRef.current = true;
 
     socketRef.current.on("participantsUpdate", (participants) => {
       if (!mountedRef.current) return;
@@ -205,6 +320,8 @@ export const useChatRoom = () => {
       "messagesRead",
       ({ userId, messageIds, timestamp }) => {
         if (!mountedRef.current) return;
+        if (!Array.isArray(messageIds) || !messageIds.length) return;
+
         setMessages((prev) =>
           prev.map((msg) => {
             if (!messageIds.includes(msg._id)) return msg;
@@ -225,43 +342,33 @@ export const useChatRoom = () => {
     );
 
     socketRef.current.on("message", (message) => {
-      if (
-        !message ||
-        !mountedRef.current ||
-        messageProcessingRef.current ||
-        !message._id
-      )
-        return;
-
-      if (processedMessageIds.current.has(message._id)) return;
-      processedMessageIds.current.add(message._id);
-
-      setMessages((prev) => {
-        if (prev.some((m) => m._id === message._id)) return prev;
-        return [...prev, message];
-      });
+      if (!mountedRef.current) return;
+      enqueueIncomingMessage(message);
     });
 
     const handlePreviousMessages = (response) => {
       if (!mountedRef.current || messageProcessingRef.current) return;
-      try {
-        messageProcessingRef.current = true;
-        if (!response || typeof response !== "object") {
-          throw new Error("Invalid response format");
+      messageProcessingRef.current = true;
+
+      runInIdle(() => {
+        try {
+          if (!response || typeof response !== "object") {
+            throw new Error("Invalid response format");
+          }
+
+          const { messages: loadedMessages = [], hasMore } = response;
+          const isInitialLoad = messages.length === 0;
+
+          processMessages(loadedMessages, hasMore, isInitialLoad);
+          setLoadingMessages(false);
+        } catch (e) {
+          setLoadingMessages(false);
+          setError("메시지 처리 중 오류가 발생했습니다.");
+          setHasMoreMessages(false);
+        } finally {
+          messageProcessingRef.current = false;
         }
-
-        const { messages: loadedMessages = [], hasMore } = response;
-        const isInitialLoad = messages.length === 0;
-
-        processMessages(loadedMessages, hasMore, isInitialLoad);
-        setLoadingMessages(false);
-      } catch (e) {
-        setLoadingMessages(false);
-        setError("메시지 처리 중 오류가 발생했습니다.");
-        setHasMoreMessages(false);
-      } finally {
-        messageProcessingRef.current = false;
-      }
+      });
     };
 
     socketRef.current.on("previousMessages", handlePreviousMessages);
@@ -298,6 +405,10 @@ export const useChatRoom = () => {
     setError,
     logout,
     cleanup,
+    handleReactionUpdate,
+    enqueueIncomingMessage,
+    runInIdle,
+    messages.length,
   ]);
 
   const {
@@ -327,7 +438,7 @@ export const useChatRoom = () => {
     processMessages
   );
 
-  // 소켓 연결 모니터링 useEffect (deps에 roomId 사용)
+  // 소켓 연결 모니터링 useEffect
   useEffect(() => {
     if (!socketRef.current || !currentUser) return;
 
@@ -490,7 +601,7 @@ export const useChatRoom = () => {
     [handleMessageSubmit]
   );
 
-  // ✅ retryMessageLoad를 위에서 안정적으로 정의
+  // ✅ retryMessageLoad
   const retryMessageLoad = useCallback(() => {
     if (!mountedRef.current || !roomId) return;
     messageLoadAttemptRef.current = 0;
