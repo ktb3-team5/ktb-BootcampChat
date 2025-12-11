@@ -57,15 +57,11 @@ public class UserService {
      * @param email 사용자 이메일
      */
     public UserResponse updateUserProfile(String email, UpdateProfileRequest request) {
-        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
-            throw new PasswordMismatchException("비밀번호가 일치하지 않습니다.");
-        }
         User user = userRepository.findByEmail(email.toLowerCase())
                 .orElseThrow(() -> new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
 
         // 프로필 정보 업데이트
         user.setName(request.getName());
-        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
         user.setUpdatedAt(LocalDateTime.now());
 
         User updatedUser = userRepository.save(user);
