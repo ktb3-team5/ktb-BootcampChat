@@ -2,7 +2,7 @@
   <configuration default="false" name="ChatAppApplication" type="SpringBootApplicationConfigurationType" factoryName="Spring Boot" nameIsGenerated="true">
     <option name="ACTIVE_PROFILES" value="dev" />
     <option name="FRAME_DEACTIVATION_UPDATE_POLICY" value="UpdateClassesAndResources" />
-    <module name="ktb-chat-backend" />
+    <module name="ktb-BootcampChat" />
     <option name="SPRING_BOOT_MAIN_CLASS" value="com.ktb.chatapp.ChatAppApplication" />
     <option name="WORKING_DIRECTORY" value="file://$PROJECT_DIR$/apps/backend" />
     <extension name="coverage">
