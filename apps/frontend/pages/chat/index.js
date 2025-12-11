@@ -13,7 +13,6 @@ import {
   NetworkIcon,
   RefreshOutlineIcon,
   GroupIcon,
-  PlusCircleIcon,
 } from "@vapor-ui/icons";
 import {
   Button,
@@ -69,99 +68,170 @@ const LoadingIndicator = ({ text }) => (
   </HStack>
 );
 
-const TableWrapper = ({ children, onScroll, loadingMore, hasMore, rooms }) => {
-  const tableRef = useRef(null);
-  const scrollTimeoutRef = useRef(null);
-  const lastScrollTime = useRef(Date.now());
+const TableWrapper = React.memo(
+  ({ children, onScroll, loadingMore, hasMore, roomsCount }) => {
+    const tableRef = useRef(null);
+    const scrollTimeoutRef = useRef(null);
+    const lastScrollTime = useRef(Date.now());
 
-  const handleScroll = useCallback(
-    (e) => {
-      const now = Date.now();
-      const container = e.target;
+    const handleScroll = useCallback(
+      (e) => {
+        const now = Date.now();
+        const container = e.target;
 
-      // 마지막 스크롤 체크로부터 150ms가 지났는지 확인
-      if (now - lastScrollTime.current >= SCROLL_DEBOUNCE_DELAY) {
-        const { scrollHeight, scrollTop, clientHeight } = container;
-        const distanceToBottom = scrollHeight - (scrollTop + clientHeight);
-
-        if (distanceToBottom < SCROLL_THRESHOLD && !loadingMore && hasMore) {
-          lastScrollTime.current = now; // 마지막 체크 시간 업데이트
-          onScroll();
-          return;
-        }
-
-        lastScrollTime.current = now;
-      } else if (!scrollTimeoutRef.current) {
-        // 디바운스 타이머 설정
-        scrollTimeoutRef.current = setTimeout(() => {
+        // 마지막 스크롤 체크로부터 150ms가 지났는지 확인
+        if (now - lastScrollTime.current >= SCROLL_DEBOUNCE_DELAY) {
           const { scrollHeight, scrollTop, clientHeight } = container;
           const distanceToBottom = scrollHeight - (scrollTop + clientHeight);
 
           if (distanceToBottom < SCROLL_THRESHOLD && !loadingMore && hasMore) {
+            lastScrollTime.current = now; // 마지막 체크 시간 업데이트
             onScroll();
+            return;
           }
 
-          scrollTimeoutRef.current = null;
-          lastScrollTime.current = Date.now();
-        }, SCROLL_DEBOUNCE_DELAY);
-      }
-    },
-    [loadingMore, hasMore, onScroll]
-  );
+          lastScrollTime.current = now;
+        } else if (!scrollTimeoutRef.current) {
+          // 디바운스 타이머 설정
+          scrollTimeoutRef.current = setTimeout(() => {
+            const { scrollHeight, scrollTop, clientHeight } = container;
+            const distanceToBottom = scrollHeight - (scrollTop + clientHeight);
 
-  useEffect(() => {
-    const container = tableRef.current;
-    if (container) {
-      container.addEventListener("scroll", handleScroll, { passive: true });
-    }
+            if (
+              distanceToBottom < SCROLL_THRESHOLD &&
+              !loadingMore &&
+              hasMore
+            ) {
+              onScroll();
+            }
 
-    return () => {
+            scrollTimeoutRef.current = null;
+            lastScrollTime.current = Date.now();
+          }, SCROLL_DEBOUNCE_DELAY);
+        }
+      },
+      [loadingMore, hasMore, onScroll]
+    );
+
+    useEffect(() => {
+      const container = tableRef.current;
       if (container) {
-        container.removeEventListener("scroll", handleScroll);
+        container.addEventListener("scroll", handleScroll, { passive: true });
       }
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-        scrollTimeoutRef.current = null;
-      }
-    };
-  }, [handleScroll]);
 
-  return (
-    <div
-      ref={tableRef}
-      className="chat-rooms-table"
-      style={{
-        height: "430px",
-        overflowY: "auto",
-        position: "relative",
-        borderRadius: "0.5rem",
-        backgroundColor: "var(--background-normal)",
-        border: "1px solid var(--border-color)",
-        scrollBehavior: "smooth",
-        WebkitOverflowScrolling: "touch",
-      }}
-    >
-      {children}
-      {loadingMore && (
-        <Box
-          padding="$300"
-          style={{ borderTop: "1px solid var(--vapor-color-border-normal)" }}
-        >
-          <LoadingIndicator text="추가 채팅방을 불러오는 중..." />
-        </Box>
-      )}
-      {!hasMore && rooms?.length > 0 && (
-        <Box
-          padding="$300"
-          style={{ borderTop: "1px solid var(--vapor-color-border-normal)" }}
-          textAlign="center"
-        >
-          <Text typography="body2">모든 채팅방을 불러왔습니다.</Text>
-        </Box>
-      )}
-    </div>
-  );
-};
+      return () => {
+        if (container) {
+          container.removeEventListener("scroll", handleScroll);
+        }
+        if (scrollTimeoutRef.current) {
+          clearTimeout(scrollTimeoutRef.current);
+          scrollTimeoutRef.current = null;
+        }
+      };
+    }, [handleScroll]);
+
+    return (
+      <div
+        ref={tableRef}
+        className="chat-rooms-table"
+        style={{
+          height: "430px",
+          overflowY: "auto",
+          position: "relative",
+          borderRadius: "0.5rem",
+          backgroundColor: "var(--background-normal)",
+          border: "1px solid var(--border-color)",
+          scrollBehavior: "smooth",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        {children}
+        {loadingMore && (
+          <Box
+            padding="$300"
+            style={{ borderTop: "1px solid var(--vapor-color-border-normal)" }}
+          >
+            <LoadingIndicator text="추가 채팅방을 불러오는 중..." />
+          </Box>
+        )}
+        {!hasMore && roomsCount > 0 && (
+          <Box
+            padding="$300"
+            style={{ borderTop: "1px solid var(--vapor-color-border-normal)" }}
+            textAlign="center"
+          >
+            <Text typography="body2">모든 채팅방을 불러왔습니다.</Text>
+          </Box>
+        )}
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.loadingMore === next.loadingMore &&
+    prev.hasMore === next.hasMore &&
+    prev.roomsCount === next.roomsCount &&
+    prev.onScroll === next.onScroll &&
+    prev.children === next.children
+);
+
+const RoomRow = React.memo(
+  ({ room, connectionStatus, onJoinRoom }) => {
+    return (
+      <Table.Row>
+        <Table.Cell>
+          <VStack gap="$050" alignItems="flex-start">
+            <Text style={{ fontWeight: 500 }}>{room.name}</Text>
+            {room.hasPassword && (
+              <HStack gap="$050" alignItems="center" color="$warning-100">
+                <LockIcon size={16} />
+                <Text typography="body3" color="$warning-100">
+                  비밀번호 필요
+                </Text>
+              </HStack>
+            )}
+          </VStack>
+        </Table.Cell>
+        <Table.Cell>
+          <HStack gap="$050" alignItems="center">
+            <GroupIcon />
+            <Text typography="body2">
+              {room.participants?.length || 0}
+            </Text>
+          </HStack>
+        </Table.Cell>
+        <Table.Cell>
+          {room.recentMessageCount > 0 ? room.recentMessageCount : "-"}
+        </Table.Cell>
+        <Table.Cell>
+          <time dateTime={new Date(room.createdAt).toISOString()}>
+            {new Date(room.createdAt).toLocaleString("ko-KR", {
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </time>
+        </Table.Cell>
+        <Table.Cell>
+          <Button
+            colorPalette="primary"
+            size="md"
+            onClick={() => onJoinRoom(room._id)}
+            disabled={connectionStatus !== CONNECTION_STATUS.CONNECTED}
+            data-testid={`join-chat-room-button`}
+          >
+            입장
+          </Button>
+        </Table.Cell>
+      </Table.Row>
+    );
+  },
+  (prev, next) =>
+    prev.room === next.room &&
+    prev.connectionStatus === next.connectionStatus &&
+    prev.onJoinRoom === next.onJoinRoom
+);
 
 function ChatRoomsComponent() {
   const router = useRouter();
@@ -584,49 +654,52 @@ function ChatRoomsComponent() {
     };
   }, [currentUser]);
 
-  const handleJoinRoom = async (roomId) => {
-    if (connectionStatus !== CONNECTION_STATUS.CONNECTED) {
-      setError({
-        title: "채팅방 입장 실패",
-        message: "서버와 연결이 끊어져 있습니다.",
-        type: "danger",
-      });
-      return;
-    }
+  const handleJoinRoom = useCallback(
+    async (roomId) => {
+      if (connectionStatus !== CONNECTION_STATUS.CONNECTED) {
+        setError({
+          title: "채팅방 입장 실패",
+          message: "서버와 연결이 끊어져 있습니다.",
+          type: "danger",
+        });
+        return;
+      }
 
-    setJoiningRoom(true);
+      setJoiningRoom(true);
 
-    try {
-      const response = await axiosInstance.post(
-        `/api/rooms/${roomId}/join`,
-        {},
-        {
-          timeout: 5000,
+      try {
+        const response = await axiosInstance.post(
+          `/api/rooms/${roomId}/join`,
+          {},
+          {
+            timeout: 5000,
+          }
+        );
+
+        if (response.data.success) {
+          router.push(`/chat/${roomId}`);
         }
-      );
+      } catch (error) {
+        let errorMessage = "입장에 실패했습니다.";
+        if (error.response?.status === 404) {
+          errorMessage = "채팅방을 찾을 수 없습니다.";
+        } else if (error.response?.status === 403) {
+          errorMessage = "채팅방 입장 권한이 없습니다.";
+        }
 
-      if (response.data.success) {
-        router.push(`/chat/${roomId}`);
+        setError({
+          title: "채팅방 입장 실패",
+          message: error.response?.data?.message || errorMessage,
+          type: "danger",
+        });
+      } finally {
+        setJoiningRoom(false);
       }
-    } catch (error) {
-      let errorMessage = "입장에 실패했습니다.";
-      if (error.response?.status === 404) {
-        errorMessage = "채팅방을 찾을 수 없습니다.";
-      } else if (error.response?.status === 403) {
-        errorMessage = "채팅방 입장 권한이 없습니다.";
-      }
+    },
+    [connectionStatus, router]
+  );
 
-      setError({
-        title: "채팅방 입장 실패",
-        message: error.response?.data?.message || errorMessage,
-        type: "danger",
-      });
-    } finally {
-      setJoiningRoom(false);
-    }
-  };
-
-  const renderRoomsTable = () => {
+  const roomsTable = useMemo(() => {
     if (!rooms || rooms.length === 0) return null;
 
     return (
@@ -651,60 +724,17 @@ function ChatRoomsComponent() {
 
         <Table.Body>
           {rooms.map((room) => (
-            <Table.Row key={room._id}>
-              <Table.Cell>
-                <VStack gap="$050" alignItems="flex-start">
-                  <Text style={{ fontWeight: 500 }}>{room.name}</Text>
-                  {room.hasPassword && (
-                    <HStack gap="$050" alignItems="center" color="$warning-100">
-                      <LockIcon size={16} />
-                      <Text typography="body3" color="$warning-100">
-                        비밀번호 필요
-                      </Text>
-                    </HStack>
-                  )}
-                </VStack>
-              </Table.Cell>
-              <Table.Cell>
-                <HStack gap="$050" alignItems="center">
-                  <GroupIcon />
-                  <Text typography="body2">
-                    {room.participants?.length || 0}
-                  </Text>
-                </HStack>
-              </Table.Cell>
-              <Table.Cell>
-                {room.recentMessageCount > 0 ? room.recentMessageCount : "-"}
-              </Table.Cell>
-              <Table.Cell>
-                <time dateTime={new Date(room.createdAt).toISOString()}>
-                  {new Date(room.createdAt).toLocaleString("ko-KR", {
-                    year: "numeric",
-                    month: "2-digit",
-                    day: "2-digit",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </time>
-              </Table.Cell>
-              <Table.Cell>
-                <Button
-                  colorPalette="primary"
-                  // variant="outline"
-                  size="md"
-                  onClick={() => handleJoinRoom(room._id)}
-                  disabled={connectionStatus !== CONNECTION_STATUS.CONNECTED}
-                  data-testid={`join-chat-room-button`}
-                >
-                  입장
-                </Button>
-              </Table.Cell>
-            </Table.Row>
+            <RoomRow
+              key={room._id}
+              room={room}
+              connectionStatus={connectionStatus}
+              onJoinRoom={handleJoinRoom}
+            />
           ))}
         </Table.Body>
       </Table.Root>
     );
-  };
+  }, [rooms, connectionStatus, handleJoinRoom]);
 
   return (
     <Box
@@ -805,9 +835,9 @@ function ChatRoomsComponent() {
             onScroll={handleLoadMore}
             loadingMore={loadingMore}
             hasMore={hasMore}
-            rooms={rooms}
+            roomsCount={rooms.length}
           >
-            {renderRoomsTable()}
+            {roomsTable}
           </TableWrapper>
         ) : (
           !error && (
