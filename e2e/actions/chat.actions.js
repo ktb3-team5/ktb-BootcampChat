@@ -1,4 +1,4 @@
-const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
+const BASE_URL = process.env.BASE_URL || "http://localhost:3000";
 
 /**
  * 첫 번째 채팅방 입장 액션
@@ -6,7 +6,7 @@ const BASE_URL = process.env.BASE_URL || 'http://localhost:3000';
  */
 async function joinFirstChatRoomAction(page) {
   await page.goto(`${BASE_URL}/chat`);
-  await page.getByTestId('join-chat-room-button').first().click();
+  await page.getByTestId("join-chat-room-button").first().click();
 }
 
 /**
@@ -17,9 +17,12 @@ async function joinRandomChatRoomAction(page) {
   await page.goto(`${BASE_URL}/chat`);
 
   // 채팅방 버튼이 최소 하나 이상 로드될 때까지 대기
-  await page.getByTestId('join-chat-room-button').first().waitFor({ state: 'visible' });
+  await page
+    .getByTestId("join-chat-room-button")
+    .first()
+    .waitFor({ state: "visible" });
 
-  const chatRoomButtons = page.getByTestId('join-chat-room-button');
+  const chatRoomButtons = page.getByTestId("join-chat-room-button");
   const count = await chatRoomButtons.count();
 
   const randomIndex = Math.floor(Math.random() * count);
@@ -42,8 +45,8 @@ async function joinChatRoomByIdAction(page, roomId) {
  */
 async function createChatRoomAction(page, roomName) {
   await page.goto(`${BASE_URL}/chat/new`);
-  await page.getByTestId('chat-room-name-input').fill(roomName);
-  await page.getByTestId('create-chat-room-button').click();
+  await page.getByTestId("chat-room-name-input").fill(roomName);
+  await page.getByTestId("create-chat-room-button").click();
   await page.waitForURL(new RegExp(`${BASE_URL}/chat/[a-f0-9]{24}`));
 }
 
@@ -53,8 +56,8 @@ async function createChatRoomAction(page, roomName) {
  * @param {string} message - 전송할 메시지 내용
  */
 async function sendMessageAction(page, message) {
-  await page.getByTestId('chat-message-input').fill(message);
-  await page.getByTestId('chat-send-button').click();
+  await page.getByTestId("chat-message-input").fill(message);
+  await page.getByTestId("chat-send-button").click();
 }
 
 /**
@@ -67,7 +70,10 @@ async function sendMultipleMessagesAction(page, count) {
   const messages = [];
 
   for (let i = 0; i < count; i++) {
-    const message = `테스트 메시지 ${i + 1} - ${Math.random().toString(36).substring(7)}`;
+    const message = `테스트 메시지 ${i + 1} - ${Math.random()
+      .toString(36)
+      .replace(/(?!$)./g, (c) => c + "!@#%^&*-=_+"[~~(Math.random() * 11)])
+      .substring(2, 8)}`;
     messages.push(message);
 
     await sendMessageAction(page, message);
@@ -82,8 +88,8 @@ async function sendMultipleMessagesAction(page, count) {
  * @param {import('@playwright/test').Page} page
  * @param {string} filePath - 업로드할 파일 경로
  */
-async function uploadFileAction(page, filePath, message = '') {
-  await page.getByTestId('file-upload-input').setInputFiles(filePath);
+async function uploadFileAction(page, filePath, message = "") {
+  await page.getByTestId("file-upload-input").setInputFiles(filePath);
   await sendMessageAction(page, message);
 }
 
@@ -92,8 +98,10 @@ async function uploadFileAction(page, filePath, message = '') {
  * @param {import('@playwright/test').Page} page
  */
 async function scrollChatToTopAction(page) {
-  const container = page.getByTestId('chat-messages-container');
-  await container.evaluate((el) => { el.scrollTop = 0; });
+  const container = page.getByTestId("chat-messages-container");
+  await container.evaluate((el) => {
+    el.scrollTop = 0;
+  });
   await page.waitForTimeout(1000); // 스크롤 후 잠시 대기
 }
 
@@ -102,9 +110,13 @@ async function scrollChatToTopAction(page) {
  * @param {import('@playwright/test').Page} page
  * @param {string} emoji - 추가할 이모지 (기본값: '😀')
  */
-async function addEmojiReactionAction(page, emoji = '😀') {
-  await page.getByTestId('message-reaction-button').last().click();
-  await page.locator(`[data-testid="emoji-picker-container"] >>> button[aria-label="${emoji}"]`).click();
+async function addEmojiReactionAction(page, emoji = "😀") {
+  await page.getByTestId("message-reaction-button").last().click();
+  await page
+    .locator(
+      `[data-testid="emoji-picker-container"] >>> button[aria-label="${emoji}"]`
+    )
+    .click();
 }
 
 module.exports = {
