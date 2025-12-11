@@ -230,7 +230,9 @@ const FileMessage = ({
               <div className="text-sm font-medium truncate text-gray-200">
                 {originalname}
               </div>
-              <div className="text-xs text-gray-400">{size}</div>
+              <div className="text-xs text-gray-400" data-testid="file-size">
+                {size}
+              </div>
             </div>
           </div>
           <FileActions
@@ -269,7 +271,9 @@ const FileMessage = ({
               <div className="text-sm font-medium truncate text-gray-200">
                 {originalname}
               </div>
-              <div className="text-xs text-gray-400">{size}</div>
+              <div className="text-xs text-gray-400" data-testid="file-size">
+                {size}
+              </div>
             </div>
           </div>
           <FileActions
@@ -289,7 +293,9 @@ const FileMessage = ({
               <div className="text-sm font-medium truncate text-gray-200">
                 {originalname}
               </div>
-              <div className="text-xs text-gray-400">{size}</div>
+              <div className="text-xs text-gray-400" data-testid="file-size">
+                {size}
+              </div>
             </div>
           </div>
           <div className="mt-3">
@@ -322,7 +328,9 @@ const FileMessage = ({
             <div className="text-sm font-medium truncate text-gray-200">
               {originalname}
             </div>
-            <div className="text-xs text-gray-400">{size}</div>
+            <div className="text-xs text-gray-400" data-testid="file-size">
+              {size}
+            </div>
           </div>
         </div>
         <FileActions
