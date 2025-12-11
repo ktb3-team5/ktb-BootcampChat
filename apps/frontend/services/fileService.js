@@ -98,6 +98,7 @@ class FileService {
           'x-auth-token': token,
           'x-session-id': sessionId
         },
+        
         withCredentials: true,
         cancelToken: source.token,
         onUploadProgress: (progressEvent) => {
