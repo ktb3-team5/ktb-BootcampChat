@@ -14,17 +14,34 @@ deploy:
 	@echo "📦 Deploying to remote servers..."
 	@for server in $(DEPLOY_SERVERS); do \
 		echo "→ Deploying to $$server..."; \
-		ssh $$server "mkdir -p $(DEPLOY_PATH)"; \
+		# [수정] ssh 접속 시 ubuntu 계정 명시
+		ssh -o StrictHostKeyChecking=no ubuntu@$$server "mkdir -p $(DEPLOY_PATH)"; \
+		\
 		echo "  📁 Copying standalone build..."; \
-		rsync -avz --delete --exclude='*.log' --exclude='.env*' --exclude="server.pid" --exclude='/package.json' .next/standalone/ $$server:$(DEPLOY_PATH)/; \
+		# [수정] rsync 접속 시 ubuntu 계정 명시
+		rsync -avz --delete --exclude='*.log' --exclude='.env*' --exclude="server.pid" --exclude='/package.json' \
+			-e "ssh -o StrictHostKeyChecking=no" \
+			.next/standalone/ ubuntu@$$server:$(DEPLOY_PATH)/; \
+		\
 		echo "  📁 Copying static files..."; \
-		rsync -avz --delete .next/static $$server:$(DEPLOY_PATH)/.next/; \
+		rsync -avz --delete \
+			-e "ssh -o StrictHostKeyChecking=no" \
+			.next/static ubuntu@$$server:$(DEPLOY_PATH)/.next/; \
+		\
 		echo "  📁 Copying public files..."; \
-		rsync -avz --delete public $$server:$(DEPLOY_PATH)/; \
+		rsync -avz --delete \
+			-e "ssh -o StrictHostKeyChecking=no" \
+			public ubuntu@$$server:$(DEPLOY_PATH)/; \
+		\
 		echo "  📁 Copying restart script..."; \
-		rsync -avz restart.sh $$server:$(DEPLOY_PATH)/; \
+		rsync -avz \
+			-e "ssh -o StrictHostKeyChecking=no" \
+			restart.sh ubuntu@$$server:$(DEPLOY_PATH)/; \
+		\
 		echo "  🔄 Restarting server..."; \
-		ssh $$server "cd $(DEPLOY_PATH) && chmod +x restart.sh && ./restart.sh"; \
+		# [수정] 재시작 명령 시 ubuntu 계정 명시
+		ssh -o StrictHostKeyChecking=no ubuntu@$$server "cd $(DEPLOY_PATH) && chmod +x restart.sh && ./restart.sh"; \
+		\
 		echo "✅ Deployment to $$server completed!"; \
 	done
 	@echo "✅ All deployments completed!"

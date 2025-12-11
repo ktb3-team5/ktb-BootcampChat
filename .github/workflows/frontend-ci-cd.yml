@@ -34,6 +34,7 @@ jobs:
       - name: Build frontend (production)
         run: npm run build:production
         env:
+          # 빌드 타임에 환경변수 주입 (중요)
           NEXT_PUBLIC_API_URL: ${{ secrets.NEXT_PUBLIC_API_URL }}
           NEXT_PUBLIC_SOCKET_URL: ${{ secrets.NEXT_PUBLIC_SOCKET_URL }}
 
@@ -73,6 +74,7 @@ jobs:
       - name: Get frontend instance IPs by tags
         id: get_frontend_ips
         run: |
+          # PublicIpAddress를 가져오도록 설정됨
           IPS=$(aws ec2 describe-instances \
             --filters \
               "Name=tag:Service,Values=frontend" \
