@@ -4,6 +4,7 @@
 DEPLOY_SERVERS ?= ktb-fe01
 DEPLOY_PATH ?= /home/ubuntu/ktb-chat-frontend
 
+# 로컬에서 프로덕션 빌드
 build-local:
 	@echo "🏗️  Building locally..."
 	npm run build:production
@@ -14,10 +15,16 @@ deploy:
 	@for server in $(DEPLOY_SERVERS); do \
 		echo "→ Deploying to $$server..."; \
 		ssh -o StrictHostKeyChecking=no ubuntu@$$server "mkdir -p $(DEPLOY_PATH)"; \
-		rsync -avz --delete --exclude='*.log' --exclude='.env*' --exclude="server.pid" --exclude='/package.json' -e "ssh -o StrictHostKeyChecking=no" .next/standalone/ ubuntu@$$server:$(DEPLOY_PATH)/; \
-		rsync -avz -e "ssh -o StrictHostKeyChecking=no" .next/static ubuntu@$$server:$(DEPLOY_PATH)/.next/; \
-		rsync -avz -e "ssh -o StrictHostKeyChecking=no" public ubuntu@$$server:$(DEPLOY_PATH)/; \
-		rsync -avz -e "ssh -o StrictHostKeyChecking=no" restart.sh ubuntu@$$server:$(DEPLOY_PATH)/; \
+		echo "  📁 Copying FULL standalone build..."; \
+		# [핵심] standalone 폴더 하나만 보냅니다. (이 안에 BUILD_ID, static, public 다 있음)
+		rsync -avz --delete --exclude='*.log' --exclude='.env*' --exclude="server.pid" \
+			-e "ssh -o StrictHostKeyChecking=no" \
+			.next/standalone/ ubuntu@$$server:$(DEPLOY_PATH)/; \
+		echo "  📁 Copying restart script..."; \
+		rsync -avz \
+			-e "ssh -o StrictHostKeyChecking=no" \
+			restart.sh ubuntu@$$server:$(DEPLOY_PATH)/; \
+		echo "  🔄 Restarting server..."; \
 		ssh -o StrictHostKeyChecking=no ubuntu@$$server "cd $(DEPLOY_PATH) && chmod +x restart.sh && ./restart.sh"; \
 		echo "✅ Deployment to $$server completed!"; \
 	done
