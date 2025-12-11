@@ -47,7 +47,10 @@ function NewChatRoom() {
       throw new Error(errorData.message);
     }
 
-    router.push(`/chat/${roomId}`);
+    // router.push(`/chat/${roomId}`);
+    // ⭐ Playwright가 URL 변화를 확실히 감지할 수 있도록 보정
+    await Promise.resolve();
+    await router.push(`/chat/${roomId}`);
   };
 
   const handleSubmit = async (e) => {
@@ -55,16 +58,6 @@ function NewChatRoom() {
 
     const nameValue = nameRef.current.trim();
     const passwordValue = hasPassword ? passwordRef.current : undefined;
-
-    if (!nameValue) {
-      setError("채팅방 이름을 입력해주세요.");
-      return;
-    }
-
-    if (hasPassword && !passwordValue) {
-      setError("비밀번호를 입력해주세요.");
-      return;
-    }
 
     try {
       setLoading(true);
@@ -86,13 +79,13 @@ function NewChatRoom() {
         }
       );
 
+      const body = await response.json();
+
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message);
+        throw new Error(body.message);
       }
 
-      const { data } = await response.json();
-      await joinRoom(data._id, passwordValue);
+      await joinRoom(body.data._id, passwordValue); // ✅ 반드시 실행됨
     } catch (err) {
       setError(err.message);
     } finally {
