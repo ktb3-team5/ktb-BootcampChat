@@ -154,31 +154,13 @@ test.describe.serial("채팅 E2E 테스트", () => {
         .substring(2, 8)}`;
 
       // 1. 업로드 API 응답 감청
-      
-      // const uploadPromise = page.waitForResponse(
-      //   (response) =>
-      //     response.url().includes("/api/files/upload") &&
-      //     response.status() === 200,
-          
-      //   { timeout: 15000 }
-      // );
       const uploadPromise = page.waitForResponse(
-      (response) => {
-        const url = response.url();
-        const status = response.status();
-        const isMatch = url.includes("/api/files/upload") && status === 200;
+        (response) =>
+          response.url().includes("/api/files/upload") &&
+          response.status() === 200,
+        { timeout: 15000 }
+      );
 
-        console.log('Response detected:', {
-          url,
-          status,
-          isMatch
-        });
-
-        return isMatch;
-      },
-      { timeout: 15000 }
-    );
-      
       // 2. 파일 업로드 액션
       await uploadFileAction(page, filePath, message);
 
@@ -231,7 +213,6 @@ test.describe.serial("채팅 E2E 테스트", () => {
 
       // 1. 업로드 API 응답 감청
       const uploadPromise = page.waitForResponse(
-
         (response) =>
           response.url().includes("/api/files/upload") &&
           response.status() === 200,
