@@ -1,7 +1,8 @@
-import axios, { isCancel, CancelToken } from 'axios';
+import axios from 'axios';
 import axiosInstance from './axios';
 import { Toast } from '../components/Toast';
 import { ulid } from 'ulid';
+import { uploadChatFileToS3, getS3ImageUrl } from '../utils/s3Upload';
 
 class FileService {
   constructor() {
@@ -81,50 +82,28 @@ class FileService {
       return validationResult;
     }
 
-    // 환경 변수 검증
-    if (!process.env.NEXT_PUBLIC_S3_BUCKET_NAME || !process.env.NEXT_PUBLIC_AWS_REGION) {
-      return {
-        success: false,
-        message: 'S3 설정이 올바르지 않습니다. 관리자에게 문의하세요.'
-      };
-    }
-
     try {
-      // 1단계: S3 key 생성
-      const extension = file.name.split('.').pop().toLowerCase();
-      const fileName = `${ulid()}.${extension}`;
-      const s3Key = `chat-files/${Date.now()}_${fileName}`;
-
-      // 2단계: S3에 직접 업로드
-      const s3Url = `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com/${s3Key}`;
-
-      const source = CancelToken.source();
-      this.activeUploads.set(file.name, source);
-
-      const uploadResponse = await fetch(s3Url, {
-        method: 'PUT',
-        body: file,
-        headers: {
-          'Content-Type': file.type,
-        },
-        signal: source.token?.signal
-      });
-
-      if (!uploadResponse.ok) {
-        throw new Error(`S3 업로드 실패: ${uploadResponse.status} ${uploadResponse.statusText}`);
+      // userId 가져오기 (localStorage에서)
+      const userStr = localStorage.getItem('user');
+      if (!userStr) {
+        throw new Error('사용자 정보를 찾을 수 없습니다.');
       }
+      const user = JSON.parse(userStr);
+      const userId = user.id;
 
-      // 3단계: 백엔드에 메타데이터 등록
-      const registerUrl = this.baseUrl ?
-        `${this.baseUrl}/api/files/register` :
-        '/api/files/register';
+      // 1단계: S3에 직접 업로드
+      if (onProgress) onProgress(0);
 
-      const response = await axiosInstance.post(registerUrl, {
-        s3Key: s3Key,
-        originalName: file.name,
-        size: file.size,
-        mimeType: file.type
-      }, {
+      const uploadResult = await uploadChatFileToS3(file, userId);
+
+      if (onProgress) onProgress(50);
+
+      // 2단계: 백엔드에 S3 key + 메타데이터 전송
+      const uploadUrl = this.baseUrl ?
+        `${this.baseUrl}/api/files/upload` :
+        '/api/files/upload';
+
+      const response = await axiosInstance.post(uploadUrl, uploadResult, {
         headers: {
           'Content-Type': 'application/json',
           'x-auth-token': token,
@@ -133,7 +112,7 @@ class FileService {
         withCredentials: true
       });
 
-      this.activeUploads.delete(file.name);
+      if (onProgress) onProgress(100);
 
       if (!response.data || !response.data.success) {
         return {
@@ -149,21 +128,12 @@ class FileService {
           ...response.data,
           file: {
             ...fileData,
-            url: this.getPublicUrl(fileData.filename)
+            url: this.getFileUrl(fileData.filename, true)
           }
         }
       };
 
     } catch (error) {
-      this.activeUploads.delete(file.name);
-
-      if (isCancel(error)) {
-        return {
-          success: false,
-          message: '업로드가 취소되었습니다.'
-        };
-      }
-
       if (error.response?.status === 401) {
         throw new Error('Authentication expired. Please login again.');
       }
@@ -173,7 +143,22 @@ class FileService {
   }
   async downloadFile(filename, originalname, token, sessionId) {
     try {
-      // 파일 존재 여부 먼저 확인
+      // S3 파일인 경우 CloudFront URL로 직접 다운로드
+      if (filename.startsWith('chat-files/') || filename.startsWith('profiles/')) {
+        const s3Url = getS3ImageUrl(filename);
+
+        const link = document.createElement('a');
+        link.href = s3Url;
+        link.download = originalname || filename.split('/').pop();
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        return { success: true };
+      }
+
+      // 로컬 파일인 경우 기존 방식
       const downloadUrl = this.getFileUrl(filename, false);
       // axios 인터셉터가 자동으로 인증 헤더를 추가합니다
       const checkResponse = await axiosInstance.head(downloadUrl, {
@@ -255,13 +240,14 @@ class FileService {
   }
 
   getFileUrl(filename, forPreview = false) {
-    // S3 key인 경우 CloudFront/S3 URL 반환
-    if (filename && filename.startsWith('chat-files/')) {
-      return this.getPublicUrl(filename);
+    if (!filename) return '';
+
+    // S3 파일인 경우 CloudFront URL 반환
+    if (filename.startsWith('chat-files/') || filename.startsWith('profiles/')) {
+      return getS3ImageUrl(filename);
     }
 
-    // 레거시 파일은 백엔드 API 사용
-    if (!filename) return '';
+    // 로컬 파일인 경우 기존 방식
     const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
     const endpoint = forPreview ? 'view' : 'download';
     return `${baseUrl}/api/files/${endpoint}/${filename}`;
@@ -270,12 +256,12 @@ class FileService {
   getPreviewUrl(file, token, sessionId, withAuth = true) {
     if (!file?.filename) return '';
 
-    // S3 key인 경우 CloudFront/S3 URL 반환 (인증 불필요, 퍼블릭 버킷)
-    if (file.filename.startsWith('chat-files/')) {
-      return this.getPublicUrl(file.filename);
+    // S3 파일인 경우 CloudFront URL 직접 반환 (퍼블릭 접근)
+    if (file.filename.startsWith('chat-files/') || file.filename.startsWith('profiles/')) {
+      return getS3ImageUrl(file.filename);
     }
 
-    // 레거시 파일은 백엔드 API 사용
+    // 로컬 파일인 경우 기존 방식
     const baseUrl = `${process.env.NEXT_PUBLIC_API_URL}/api/files/view/${file.filename}`;
 
     if (!withAuth) return baseUrl;
@@ -287,16 +273,6 @@ class FileService {
     url.searchParams.append('sessionId', encodeURIComponent(sessionId));
 
     return url.toString();
-  }
-
-  getPublicUrl(s3Key) {
-    if (!s3Key) return '';
-
-    // CloudFront URL 사용 (설정되지 않은 경우 S3 직접 URL로 폴백)
-    const baseUrl = process.env.NEXT_PUBLIC_CLOUDFRONT_URL ||
-                    `https://${process.env.NEXT_PUBLIC_S3_BUCKET_NAME}.s3.${process.env.NEXT_PUBLIC_AWS_REGION}.amazonaws.com`;
-
-    return `${baseUrl}/${s3Key}`;
   }
 
   getFileType(filename) {

@@ -10,7 +10,6 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 @Component
 public class RedisEventPublisher {
-
     private final RedissonClient redissonClient;
     private final RedisTopicRouter topicRouter;
 
