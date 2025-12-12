@@ -23,7 +23,7 @@ HEALTH_CHECK_TIMEOUT=60  # seconds
 HEALTH_CHECK_INTERVAL=2  # seconds
 
 # JVM Options
-JVM_OPTS="${JVM_OPTS:--Xmx1024m -Xms512m}"
+JVM_OPTS="-Xms1024m -Xmx1024m -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -XX:+HeapDumpOnOutOfMemoryError -XX:HeapDumpPath=./logs"
 
 # Spring Profile
 SPRING_PROFILE="${SPRING_PROFILE:-prod}"
@@ -385,3 +385,4 @@ case "${1:-}" in
         exit 1
         ;;
 esac
+
