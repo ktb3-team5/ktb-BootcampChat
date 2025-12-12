@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CameraIcon, CloseOutlineIcon } from '@vapor-ui/icons';
-import { Button, Text, Callout, IconButton, VStack, HStack } from '@vapor-ui/core';
+import { Button, Text, VStack, HStack } from '@vapor-ui/core';
 import { useAuth } from '@/contexts/AuthContext';
 import CustomAvatar from '@/components/CustomAvatar';
 import { Toast } from '@/components/Toast';
@@ -194,11 +194,15 @@ const ProfileImageUpload = ({ currentImage, onImageChange }) => {
       />
 
       {error && (
-        <Callout color="danger">
-          <HStack gap="$200" alignItems="center">
-            <Text>{error}</Text>
-          </HStack>
-        </Callout>
+        <div style={{
+          padding: '12px',
+          backgroundColor: '#fee',
+          border: '1px solid #fcc',
+          borderRadius: '8px',
+          color: '#c33'
+        }}>
+          <Text>{error}</Text>
+        </div>
       )}
 
       {uploading && (

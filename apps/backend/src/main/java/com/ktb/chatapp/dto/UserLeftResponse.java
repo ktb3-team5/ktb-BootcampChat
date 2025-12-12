@@ -4,13 +4,11 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
-
 @Data
-@NoArgsConstructor
 @AllArgsConstructor
-public class MessagesReadResponse {
+@NoArgsConstructor
+public class UserLeftResponse {
     private String roomId;
     private String userId;
-    private List<String> messageIds;
+    private String userName;
 }

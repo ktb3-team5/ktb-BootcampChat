@@ -1,5 +1,6 @@
 package com.ktb.chatapp.controller;
 
+import com.ktb.chatapp.dto.FileRegisterRequest;
 import com.ktb.chatapp.dto.StandardResponse;
 import com.ktb.chatapp.model.File;
 import com.ktb.chatapp.model.User;
@@ -42,9 +43,9 @@ public class FileController {
     private final UserRepository userRepository;
 
     /**
-     * 파일 업로드
+     * 파일 업로드 (로컬 또는 S3 메타데이터 등록)
      */
-    @Operation(summary = "파일 업로드", description = "파일을 업로드합니다. 최대 50MB까지 가능합니다.")
+    @Operation(summary = "파일 업로드", description = "파일을 업로드합니다. Multipart로 직접 업로드하거나, JSON으로 S3 메타데이터를 등록할 수 있습니다.")
     @ApiResponses({
         @ApiResponse(responseCode = "200", description = "파일 업로드 성공"),
         @ApiResponse(responseCode = "400", description = "잘못된 파일",
@@ -58,35 +59,80 @@ public class FileController {
     })
     @PostMapping("/upload")
     public ResponseEntity<?> uploadFile(
-            @Parameter(description = "업로드할 파일") @RequestParam("file") MultipartFile file,
-            Principal principal) {
+            @Parameter(description = "업로드할 파일 (multipart)") @RequestParam(value = "file", required = false) MultipartFile file,
+            @Parameter(description = "S3 메타데이터 (json)") @RequestBody(required = false) FileRegisterRequest s3Request,
+            Principal principal,
+            HttpServletRequest request) {
         try {
             User user = userRepository.findByEmail(principal.getName())
                     .orElseThrow(() -> new UsernameNotFoundException("User not found: " + principal.getName()));
 
-            FileUploadResult result = fileService.uploadFile(file, user.getId());
+            String contentType = request.getContentType();
 
-            if (result.isSuccess()) {
+            // S3 메타데이터 등록 (application/json)
+            if (contentType != null && contentType.contains("application/json") && s3Request != null) {
+                log.info("S3 파일 메타데이터 등록: {}", s3Request.getS3Key());
+
+                // 파일 메타데이터 저장
+                File fileEntity = new File();
+                fileEntity.setFilename(s3Request.getS3Key());
+                fileEntity.setOriginalname(s3Request.getOriginalName());
+                fileEntity.setMimetype(s3Request.getMimeType());
+                fileEntity.setSize(s3Request.getSize());
+                fileEntity.setUser(user.getId());
+
+                File savedFile = fileRepository.save(fileEntity);
+
                 Map<String, Object> response = new HashMap<>();
                 response.put("success", true);
-                response.put("message", "파일 업로드 성공");
-                
+                response.put("message", "파일 등록 성공");
+
                 Map<String, Object> fileData = new HashMap<>();
-                fileData.put("_id", result.getFile().getId());
-                fileData.put("filename", result.getFile().getFilename());
-                fileData.put("originalname", result.getFile().getOriginalname());
-                fileData.put("mimetype", result.getFile().getMimetype());
-                fileData.put("size", result.getFile().getSize());
-                fileData.put("uploadDate", result.getFile().getUploadDate());
-                
+                fileData.put("_id", savedFile.getId());
+                fileData.put("filename", savedFile.getFilename());
+                fileData.put("originalname", savedFile.getOriginalname());
+                fileData.put("mimetype", savedFile.getMimetype());
+                fileData.put("size", savedFile.getSize());
+                fileData.put("uploadDate", savedFile.getUploadDate());
+
                 response.put("file", fileData);
 
                 return ResponseEntity.ok(response);
-            } else {
+            }
+            // 로컬 파일 업로드 (multipart/form-data)
+            else if (file != null) {
+                log.info("로컬 파일 업로드: {}", file.getOriginalFilename());
+
+                FileUploadResult result = fileService.uploadFile(file, user.getId());
+
+                if (result.isSuccess()) {
+                    Map<String, Object> response = new HashMap<>();
+                    response.put("success", true);
+                    response.put("message", "파일 업로드 성공");
+
+                    Map<String, Object> fileData = new HashMap<>();
+                    fileData.put("_id", result.getFile().getId());
+                    fileData.put("filename", result.getFile().getFilename());
+                    fileData.put("originalname", result.getFile().getOriginalname());
+                    fileData.put("mimetype", result.getFile().getMimetype());
+                    fileData.put("size", result.getFile().getSize());
+                    fileData.put("uploadDate", result.getFile().getUploadDate());
+
+                    response.put("file", fileData);
+
+                    return ResponseEntity.ok(response);
+                } else {
+                    Map<String, Object> errorResponse = new HashMap<>();
+                    errorResponse.put("success", false);
+                    errorResponse.put("message", "파일 업로드에 실패했습니다.");
+                    return ResponseEntity.status(500).body(errorResponse);
+                }
+            }
+            else {
                 Map<String, Object> errorResponse = new HashMap<>();
                 errorResponse.put("success", false);
-                errorResponse.put("message", "파일 업로드에 실패했습니다.");
-                return ResponseEntity.status(500).body(errorResponse);
+                errorResponse.put("message", "파일 또는 S3 메타데이터가 제공되지 않았습니다.");
+                return ResponseEntity.status(400).body(errorResponse);
             }
 
         } catch (Exception e) {
@@ -94,6 +140,63 @@ public class FileController {
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("success", false);
             errorResponse.put("message", "파일 업로드 중 오류가 발생했습니다.");
+            errorResponse.put("error", e.getMessage());
+            return ResponseEntity.status(500).body(errorResponse);
+        }
+    }
+
+    /**
+     * S3에 업로드된 파일 등록 (프론트엔드에서 직접 S3에 업로드 후 호출)
+     */
+    @Operation(summary = "S3 파일 등록", description = "S3에 업로드된 파일의 key를 등록합니다. 프론트엔드에서 S3에 직접 업로드 후 호출하세요.")
+    @ApiResponses({
+        @ApiResponse(responseCode = "200", description = "파일 등록 성공"),
+        @ApiResponse(responseCode = "400", description = "유효하지 않은 입력값",
+            content = @Content(schema = @Schema(implementation = StandardResponse.class))),
+        @ApiResponse(responseCode = "401", description = "인증 실패",
+            content = @Content(schema = @Schema(implementation = StandardResponse.class))),
+        @ApiResponse(responseCode = "500", description = "서버 내부 오류",
+            content = @Content(schema = @Schema(implementation = StandardResponse.class)))
+    })
+    @PostMapping("/register")
+    public ResponseEntity<?> registerFile(
+            @RequestBody FileRegisterRequest request,
+            Principal principal) {
+        try {
+            User user = userRepository.findByEmail(principal.getName())
+                    .orElseThrow(() -> new UsernameNotFoundException("User not found: " + principal.getName()));
+
+            // 파일 메타데이터 저장
+            File fileEntity = new File();
+            fileEntity.setFilename(request.getS3Key());
+            fileEntity.setOriginalname(request.getOriginalName());
+            fileEntity.setMimetype(request.getMimeType());
+            fileEntity.setSize(request.getSize());
+            fileEntity.setUser(user.getId());
+
+            File savedFile = fileRepository.save(fileEntity);
+
+            Map<String, Object> response = new HashMap<>();
+            response.put("success", true);
+            response.put("message", "파일 등록 성공");
+
+            Map<String, Object> fileData = new HashMap<>();
+            fileData.put("_id", savedFile.getId());
+            fileData.put("filename", savedFile.getFilename());
+            fileData.put("originalname", savedFile.getOriginalname());
+            fileData.put("mimetype", savedFile.getMimetype());
+            fileData.put("size", savedFile.getSize());
+            fileData.put("uploadDate", savedFile.getUploadDate());
+
+            response.put("file", fileData);
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("파일 등록 중 에러 발생", e);
+            Map<String, Object> errorResponse = new HashMap<>();
+            errorResponse.put("success", false);
+            errorResponse.put("message", "파일 등록 중 오류가 발생했습니다.");
             errorResponse.put("error", e.getMessage());
             return ResponseEntity.status(500).body(errorResponse);
         }

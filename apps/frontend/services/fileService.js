@@ -89,9 +89,9 @@ class FileService {
 
     try {
       // userId 가져오기 (localStorage에서)
-      const userStr = localStorage.getItem("user");
+      const userStr = localStorage.getItem('user');
       if (!userStr) {
-        throw new Error("사용자 정보를 찾을 수 없습니다.");
+        throw new Error('사용자 정보를 찾을 수 없습니다.');
       }
       const user = JSON.parse(userStr);
       const userId = user.id;
@@ -148,7 +148,7 @@ class FileService {
       if (!response.data || !response.data.success) {
         return {
           success: false,
-          message: response.data?.message || "파일 등록에 실패했습니다.",
+          message: response.data?.message || '파일 등록에 실패했습니다.'
         };
       }
 
@@ -282,9 +282,14 @@ class FileService {
       return getS3ImageUrl(filename);
     }
 
+    // S3 파일인 경우 CloudFront URL 반환
+    if (filename.startsWith('chat-files/') || filename.startsWith('profiles/')) {
+      return getS3ImageUrl(filename);
+    }
+
     // 로컬 파일인 경우 기존 방식
-    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
-    const endpoint = forPreview ? "view" : "download";
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || '';
+    const endpoint = forPreview ? 'view' : 'download';
     return `${baseUrl}/api/files/${endpoint}/${filename}`;
   }
 
@@ -296,6 +301,11 @@ class FileService {
       file.filename.startsWith("chat-files/") ||
       file.filename.startsWith("profiles/")
     ) {
+      return getS3ImageUrl(file.filename);
+    }
+
+    // S3 파일인 경우 CloudFront URL 직접 반환 (퍼블릭 접근)
+    if (file.filename.startsWith('chat-files/') || file.filename.startsWith('profiles/')) {
       return getS3ImageUrl(file.filename);
     }
 
