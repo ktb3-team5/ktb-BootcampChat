@@ -20,6 +20,8 @@ COPY package.json ./
 RUN npm i
 
 COPY . .
+
+RUN npm install browser-image-compression
 RUN npm run build
 
 # Stage 2: Runner
