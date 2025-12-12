@@ -94,7 +94,7 @@ public class RoomJoinHandler {
                     .mentions(new ArrayList<>())
                     .isDeleted(false)
                     .reactions(new HashMap<>())
-                    .readers(new ArrayList<>())
+                    .readers(new HashMap<>())
                     .metadata(new HashMap<>())
                     .build();
 

@@ -69,7 +69,7 @@ public class Message {
 
     // 메시지 읽음 상태 관리
     @Builder.Default
-    private List<MessageReader> readers = new ArrayList<>();
+    private Map<String, LocalDateTime> readers = new HashMap<>();
 
     // 자유 형식 metadata 저장 필드
     @Builder.Default

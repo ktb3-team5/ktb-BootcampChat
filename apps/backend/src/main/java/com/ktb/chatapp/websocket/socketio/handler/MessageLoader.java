@@ -76,9 +76,6 @@ public class MessageLoader {
                 .collect(Collectors.toSet());
 
         List<User> users = userRepository.findByIdIn(senderIds);
-        users.forEach(user -> {
-
-        });
 
         Map<String, User> userMap = users.stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));

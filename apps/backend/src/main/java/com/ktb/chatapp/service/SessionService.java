@@ -108,6 +108,7 @@ public class SessionService {
         }
     }
 
+    // FIXME: 과도한 업데이트 쿼리
     public void updateLastActivity(String userId) {
         try {
             if (userId == null) {

@@ -40,8 +40,16 @@ public class MessageResponseMapper {
                 .roomId(message.getRoomId())
                 .reactions(message.getReactions() != null ?
                         message.getReactions() : new HashMap<>())
-                .readers(message.getReaders() != null ?
-                        message.getReaders() : new ArrayList<>());
+                .readers(
+                        message.getReaders() != null
+                                ? message.getReaders().entrySet().stream()
+                                .map(entry -> Message.MessageReader.builder()
+                                        .userId(entry.getKey())
+                                        .readAt(entry.getValue())
+                                        .build())
+                                .toList()
+                                : new ArrayList<>()
+                );
 
         // 발신자 정보 설정
         if (sender != null) {
