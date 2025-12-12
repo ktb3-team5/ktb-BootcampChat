@@ -5,6 +5,8 @@ import com.ktb.chatapp.repository.MessageRepository;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+
+import com.ktb.chatapp.repository.MessageRepositoryCustomImpl;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -17,7 +19,7 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class MessageReadStatusService {
 
-    private final MessageRepository messageRepository;
+    private final MessageRepositoryCustomImpl messageRepositoryCustom;
 
     /**
      * 메시지 읽음 상태 업데이트
@@ -30,27 +32,12 @@ public class MessageReadStatusService {
             return;
         }
         
-        Message.MessageReader readerInfo = Message.MessageReader.builder()
-                .userId(userId)
-                .readAt(LocalDateTime.now())
-                .build();
-        
         try {
-            List<Message> messagesToUpdate = messageRepository.findAllById(messageIds);
-            for (Message message : messagesToUpdate) {
-                if (message.getReaders() == null) {
-                    message.setReaders(new ArrayList<>());
-                }
-                boolean alreadyRead = message.getReaders().stream()
-                        .anyMatch(r -> r.getUserId().equals(userId));
-                if (!alreadyRead) {
-                    message.getReaders().add(readerInfo);
-                }
-                messageRepository.save(message);
-            }
-            
-            log.debug("Read status updated for {} messages by user {}",
-                    messagesToUpdate.size(), userId);
+            messageRepositoryCustom.bulkUpdateReadStatus(
+                    messageIds,
+                    userId,
+                    LocalDateTime.now()
+            );
 
         } catch (Exception e) {
             log.error("Read status update error for user {}", userId, e);
