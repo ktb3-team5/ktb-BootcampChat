@@ -5,6 +5,7 @@ import com.ktb.chatapp.dto.MessageResponse;
 import com.ktb.chatapp.dto.UserResponse;
 import com.ktb.chatapp.model.Message;
 import com.ktb.chatapp.model.User;
+import com.ktb.chatapp.model.File;
 import com.ktb.chatapp.repository.FileRepository;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,6 +25,15 @@ public class MessageResponseMapper {
 
     private final FileRepository fileRepository;
 
+    // 단건 처리용
+    public MessageResponse mapToMessageResponse(Message message, User sender) {
+        File file = null;
+        if(message.getFileId() != null) {
+            file = fileRepository.findById(message.getFileId()).orElse(null);
+        }
+        return mapToMessageResponse(message, sender, file);
+    }
+
     /**
      * Message 엔티티를 MessageResponse DTO로 변환
      *
@@ -31,7 +41,7 @@ public class MessageResponseMapper {
      * @param sender 메시지 발신자 정보 (null 가능)
      * @return MessageResponse DTO
      */
-    public MessageResponse mapToMessageResponse(Message message, User sender) {
+    public MessageResponse mapToMessageResponse(Message message, User sender, File file) {
         MessageResponse.MessageResponseBuilder builder = MessageResponse.builder()
                 .id(message.getId())
                 .content(message.getContent())
@@ -61,17 +71,9 @@ public class MessageResponseMapper {
                     .build());
         }
 
-        // 파일 정보 설정
-        Optional.ofNullable(message.getFileId())
-                .flatMap(fileRepository::findById)
-                .map(file -> FileResponse.builder()
-                        .id(file.getId())
-                        .filename(file.getFilename())
-                        .originalname(file.getOriginalname())
-                        .mimetype(file.getMimetype())
-                        .size(file.getSize())
-                        .build())
-                .ifPresent(builder::file);
+        if (file != null ) {
+            builder.file(FileResponse.from(file));
+        }
 
         // 메타데이터 설정
         if (message.getMetadata() != null) {
