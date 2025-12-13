@@ -5,14 +5,14 @@ import com.ktb.chatapp.dto.FetchMessagesResponse;
 import com.ktb.chatapp.dto.MessageResponse;
 import com.ktb.chatapp.model.Message;
 import com.ktb.chatapp.model.User;
+import com.ktb.chatapp.model.File;
+import com.ktb.chatapp.repository.FileRepository;
 import com.ktb.chatapp.repository.MessageRepository;
 import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.service.MessageReadStatusService;
 import jakarta.annotation.Nullable;
 import java.time.LocalDateTime;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -32,6 +32,7 @@ public class MessageLoader {
 
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
+    private final FileRepository fileRepository;
     private final MessageResponseMapper messageResponseMapper;
     private final MessageReadStatusService messageReadStatusService;
 
@@ -80,10 +81,25 @@ public class MessageLoader {
         Map<String, User> userMap = users.stream()
                 .collect(Collectors.toMap(User::getId, Function.identity()));
 
+        // File Batch Load
+        Set<String> fileIds = sortedMessages.stream()
+                .map(Message::getFileId)
+                .filter(Objects::nonNull)       // when fileid present
+                .collect(Collectors.toSet());
+
+        Map<String, File> fileMap = new HashMap<>();
+        if (!fileIds.isEmpty()) {
+            fileRepository.findAllById(fileIds).forEach(file ->
+                    fileMap.put(file.getId(), file)
+            );
+        }
+
         List<MessageResponse> messageResponses = sortedMessages.stream()
                 .map(message -> {
                     User user = userMap.get(message.getSenderId());
-                    return messageResponseMapper.mapToMessageResponse(message, user);
+                    File file = fileMap.get(message.getFileId());       // file from memory
+
+                    return messageResponseMapper.mapToMessageResponse(message, user, file);
                 })
                 .toList();
 
