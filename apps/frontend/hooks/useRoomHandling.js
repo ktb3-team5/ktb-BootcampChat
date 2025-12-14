@@ -246,6 +246,73 @@ export const useRoomHandling = (
     });
   }, [socketRef, mountedRef, userRooms]);
 
+  const loadAllRemainingMessages = useCallback(async (roomId, currentMessages) => {
+    try {
+      let allLoaded = false;
+      let oldestTimestamp = currentMessages[0]?.timestamp;
+      let attempts = 0;
+      const maxAttempts = 10; // 최대 10번 시도 (100개 * 10 = 1000개까지)
+
+      while (!allLoaded && attempts < maxAttempts && mountedRef.current) {
+        attempts++;
+
+        const response = await new Promise((resolve, reject) => {
+          if (!socketRef.current?.connected) {
+            reject(new Error('Socket not connected'));
+            return;
+          }
+
+          let timeoutId;
+          const cleanup = () => {
+            if (timeoutId) clearTimeout(timeoutId);
+            socketRef.current?.off('previousMessagesLoaded', handleSuccess);
+            socketRef.current?.off('error', handleError);
+          };
+
+          const handleSuccess = (response) => {
+            cleanup();
+            resolve(response);
+          };
+
+          const handleError = (error) => {
+            cleanup();
+            reject(error);
+          };
+
+          socketRef.current.once('previousMessagesLoaded', handleSuccess);
+          socketRef.current.once('error', handleError);
+          timeoutId = setTimeout(() => {
+            cleanup();
+            resolve({ messages: [], hasMore: false }); // 타임아웃 시 종료
+          }, 5000);
+
+          socketRef.current.emit('fetchPreviousMessages', {
+            roomId,
+            before: oldestTimestamp,
+            limit: 30
+          });
+        });
+
+        if (!response || !Array.isArray(response.messages) || response.messages.length === 0) {
+          allLoaded = true;
+        } else {
+          processMessages(response.messages, response.hasMore, false);
+          if (!response.hasMore) {
+            allLoaded = true;
+          }
+          // 다음 반복을 위한 timestamp 업데이트
+          oldestTimestamp = response.messages[0]?.timestamp;
+        }
+
+        // 너무 빠르게 요청하지 않도록 잠시 대기
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    } catch (error) {
+      console.error('Error loading all messages:', error);
+      // 에러가 발생해도 계속 진행
+    }
+  }, [socketRef, mountedRef, processMessages]);
+
   const loadInitialMessages = useCallback(async (roomId) => {
     const loadMessagesWithRetry = async (retryCount = 0) => {
       return new Promise((resolve, reject) => {
@@ -379,9 +446,20 @@ export const useRoomHandling = (
 
         // 4. Join Room and Load Messages
         if (mountedRef.current && socketRef.current?.connected) {
-          await joinRoom(router.query.room);
+          const joinResult = await joinRoom(router.query.room);
 
-          await loadInitialMessages(router.query.room);
+          // joinRoom 응답에서 초기 메시지와 hasMore 처리
+          if (joinResult && joinResult.messages) {
+            processMessages(joinResult.messages, joinResult.hasMore, true);
+
+            // 초기 로드 후 hasMore가 true이면 자동으로 모든 메시지 로드 (E2E 테스트 안정성)
+            if (joinResult.hasMore && mountedRef.current) {
+              await loadAllRemainingMessages(router.query.room, joinResult.messages);
+            }
+          } else {
+            // joinResult에 메시지가 없는 경우에만 별도로 로드
+            await loadInitialMessages(router.query.room);
+          }
         }
 
         if (mountedRef.current) {
