@@ -83,6 +83,16 @@ public class RedisEventListener {
                 socketIOServer.getRoomOperations(payload.getRoomId())
                         .sendEvent(ROOM_UPDATE, payload.getRoomResponse());
             }
+
+            case SESSION_ENDED -> {
+                SessionEndedPayload payload = (SessionEndedPayload) envelope.getPayload();
+                socketIOServer.getRoomOperations("user:" + payload.getUserId())
+                        .sendEvent(SESSION_ENDED, Map.of(
+                                "reason", payload.getReason(),
+                                "message", payload.getMessage()
+                        ));
+                log.info("session_ended 이벤트 전송: userId={}, reason={}", payload.getUserId(), payload.getReason());
+            }
         }
     }
 }

@@ -15,7 +15,8 @@ public class RedisTopicRouter {
             SocketIOEvents.USER_LEFT,               "chat:room",
             SocketIOEvents.MESSAGES_READ,           "chat:read",
             SocketIOEvents.ROOM_CREATED,            "chat:room-list",
-            SocketIOEvents.ROOM_UPDATE,             "chat:room-update"
+            SocketIOEvents.ROOM_UPDATE,             "chat:room-update",
+            SocketIOEvents.SESSION_ENDED,           "chat:session"
     );
 
     public String resolve(String eventType) {
