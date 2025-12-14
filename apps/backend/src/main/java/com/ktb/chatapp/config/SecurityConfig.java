@@ -31,7 +31,7 @@ public class SecurityConfig {
     private final SessionAwareJwtAuthenticationConverter jwtAuthenticationConverter;
 
     private static final List<String> CORS_ALLOWED_ORIGINS = List.of(
-            "https://chat.goorm-ktb-005.goorm.team/",
+            "https://chat.goorm-ktb-005.goorm.team",
             "http://localhost:3000"
             );
 
@@ -92,7 +92,7 @@ public class SecurityConfig {
                                 .jwtAuthenticationConverter(jwtAuthenticationConverter)
                         )
                 );
-        
+
         return http.build();
     }
 
