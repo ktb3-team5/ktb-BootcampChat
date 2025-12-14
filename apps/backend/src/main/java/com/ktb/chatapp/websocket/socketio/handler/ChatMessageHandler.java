@@ -28,6 +28,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+import com.ktb.chatapp.websocket.socketio.UserRooms;
 
 import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 
@@ -48,6 +49,7 @@ public class ChatMessageHandler {
     private final BannedWordChecker bannedWordChecker;
     private final RateLimitService rateLimitService;
     private final MeterRegistry meterRegistry;
+    private final UserRooms userRooms;
     
     @OnEvent(CHAT_MESSAGE)
     public void handleChatMessage(SocketIOClient client, ChatMessageRequest data) {
@@ -125,19 +127,40 @@ public class ChatMessageHandler {
         String messageType = data.getMessageType();
 
         try {
-            User sender = userRepository.findById(socketUser.id()).orElse(null);
+            // 소켓 세션에 캐싱된 유저 정보
+            User sender = client.get("userInfo");
+            if (sender == null) {
+                // 세션에 없으면 DB 조회(Fallback)
+                sender = userRepository.findById(socketUser.id()).orElse(null);
+                if (sender != null) {
+                    client.set("userInfo", sender);
+                }
+            }
+
             if (sender == null) {
                 recordError("user_not_found");
                 client.sendEvent(ERROR, Map.of(
-                        "code", "MESSAGE_ERROR",
-                        "message", "User not found"
+                        "code", "USER_NOT_FOUND",
+                        "message", "User not found."
                 ));
-                timerSample.stop(createTimer("error", "user_not_found"));
+                timerSample.stop(createTimer("error",  "user_not_found"));
                 return;
             }
 
-            Room room = roomRepository.findById(roomId).orElse(null);
-            if (room == null || !room.getParticipantIds().contains(socketUser.id())) {
+            // 1차: UserRooms 체크 (빠름)
+            boolean isParticipant = userRooms.isInRoom(socketUser.id(), roomId);
+
+            // 2차: UserRooms에 없으면 DB 확인 (fallback)
+            if (!isParticipant) {
+                Room room = roomRepository.findById(roomId).orElse(null);
+                if (room != null && room.getParticipantIds() != null && room.getParticipantIds().contains(socketUser.id())) {
+                    // DB에는 있으니 UserRooms 동기화
+                    userRooms.add(socketUser.id(), roomId);
+                    isParticipant = true;
+                }
+            }
+
+            if (!isParticipant) {
                 recordError("room_access_denied");
                 client.sendEvent(ERROR, Map.of(
                         "code", "MESSAGE_ERROR",
@@ -174,7 +197,6 @@ public class ChatMessageHandler {
 
             Message savedMessage = messageRepository.save(message);
 
-//            client.sendEvent(MESSAGE, createMessageResponse(savedMessage, sender));
             redisEventPublisher.publish(MESSAGE, createMessageResponse(savedMessage, sender));
 
             socketAuxExecutor.submit(() -> aiService.handleAIMentions(roomId, socketUser.id(), messageContent));
