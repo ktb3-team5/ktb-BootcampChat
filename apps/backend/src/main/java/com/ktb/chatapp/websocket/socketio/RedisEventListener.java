@@ -71,6 +71,18 @@ public class RedisEventListener {
                 socketIOServer.getRoomOperations(response.getRoomId())
                         .sendEvent(MESSAGES_READ, response);
             }
+
+            case ROOM_CREATED -> {
+                RoomResponse response = (RoomResponse) envelope.getPayload();
+                socketIOServer.getRoomOperations("room-list")
+                        .sendEvent(ROOM_CREATED, response);
+            }
+
+            case ROOM_UPDATE -> {
+                RoomUpdatePayload payload = (RoomUpdatePayload) envelope.getPayload();
+                socketIOServer.getRoomOperations(payload.getRoomId())
+                        .sendEvent(ROOM_UPDATE, payload.getRoomResponse());
+            }
         }
     }
 }

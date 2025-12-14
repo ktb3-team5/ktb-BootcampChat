@@ -181,6 +181,12 @@ export const useChatRoom = () => {
           throw new Error("Invalid messages format");
         }
 
+        // hasMore 상태는 중복 여부와 관계없이 항상 업데이트
+        setHasMoreMessages(hasMore);
+        if (isInitialLoad) {
+          initialLoadCompletedRef.current = true;
+        }
+
         setMessages((prev) => {
           if (!mountedRef.current) return prev;
 
@@ -213,11 +219,6 @@ export const useChatRoom = () => {
 
           return merged;
         });
-
-        setHasMoreMessages(hasMore);
-        if (isInitialLoad) {
-          initialLoadCompletedRef.current = true;
-        }
       } catch (e) {
         throw e;
       }

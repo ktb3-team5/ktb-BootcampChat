@@ -100,8 +100,8 @@ public class RoomJoinHandler {
 
             joinMessage = messageRepository.save(joinMessage);
 
-            // 초기 메시지 로드
-            FetchMessagesRequest req = new FetchMessagesRequest(roomId, 30, null);
+            // 초기 메시지 로드 (페이지 새로고침 시 충분한 메시지 로드)
+            FetchMessagesRequest req = new FetchMessagesRequest(roomId, 100, null);
             FetchMessagesResponse messageLoadResult = messageLoader.loadMessages(req, userId);
 
             // 업데이트된 room 다시 조회하여 최신 participantIds 가져오기

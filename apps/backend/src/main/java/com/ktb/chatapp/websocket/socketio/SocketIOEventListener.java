@@ -1,6 +1,7 @@
 package com.ktb.chatapp.websocket.socketio;
 
 import com.corundumstudio.socketio.SocketIOServer;
+import com.ktb.chatapp.dto.RoomUpdatePayload;
 import com.ktb.chatapp.event.*;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +20,7 @@ import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
 public class SocketIOEventListener {
 
     private final SocketIOServer socketIOServer;
+    private final RedisEventPublisher redisEventPublisher;
 
     @Async
     @EventListener
@@ -39,8 +41,9 @@ public class SocketIOEventListener {
     @EventListener
     public void handleRoomCreatedEvent(RoomCreatedEvent event) {
         try {
-            socketIOServer.getRoomOperations("room-list").sendEvent(ROOM_CREATED, event.getRoomResponse());
-            log.info("roomCreated 이벤트 발송: roomId={}", event.getRoomResponse().getId());
+            // Redis로 publish하여 모든 서버에 전파
+            redisEventPublisher.publish(ROOM_CREATED, event.getRoomResponse());
+            log.info("roomCreated 이벤트 Redis 발행: roomId={}", event.getRoomResponse().getId());
         } catch (Exception e) {
             log.error("roomCreated 이벤트 발송 실패", e);
         }
@@ -50,8 +53,10 @@ public class SocketIOEventListener {
     @EventListener
     public void handleRoomUpdatedEvent(RoomUpdatedEvent event) {
         try {
-            socketIOServer.getRoomOperations(event.getRoomId()).sendEvent(ROOM_UPDATE, event.getRoomResponse());
-            log.info("roomUpdate 이벤트 발송: roomId={}", event.getRoomId());
+            // Redis로 publish하여 모든 서버에 전파
+            RoomUpdatePayload payload = new RoomUpdatePayload(event.getRoomId(), event.getRoomResponse());
+            redisEventPublisher.publish(ROOM_UPDATE, payload);
+            log.info("roomUpdate 이벤트 Redis 발행: roomId={}", event.getRoomId());
         } catch (Exception e) {
             log.error("roomUpdate 이벤트 발송 실패: roomId={}", event.getRoomId(), e);
         }
