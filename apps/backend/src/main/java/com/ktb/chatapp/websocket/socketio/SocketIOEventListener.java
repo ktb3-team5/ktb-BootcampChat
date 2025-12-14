@@ -2,6 +2,7 @@ package com.ktb.chatapp.websocket.socketio;
 
 import com.corundumstudio.socketio.SocketIOServer;
 import com.ktb.chatapp.dto.RoomUpdatePayload;
+import com.ktb.chatapp.dto.SessionEndedPayload;
 import com.ktb.chatapp.event.*;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
@@ -26,12 +27,14 @@ public class SocketIOEventListener {
     @EventListener
     public void handleSessionEndedEvent(SessionEndedEvent event) {
         try {
-            socketIOServer.getRoomOperations("user:" + event.getUserId())
-                    .sendEvent("session_ended", Map.of(
-                            "reason", event.getReason(),
-                            "message", event.getMessage()
-                    ));
-            log.info("session_ended 이벤트 발송: userId={}, reason={}", event.getUserId(), event.getReason());
+            // Redis로 publish하여 모든 서버에 전파
+            SessionEndedPayload payload = new SessionEndedPayload(
+                    event.getUserId(),
+                    event.getReason(),
+                    event.getMessage()
+            );
+            redisEventPublisher.publish(SESSION_ENDED, payload);
+            log.info("session_ended 이벤트 Redis 발행: userId={}, reason={}", event.getUserId(), event.getReason());
         } catch (Exception e) {
             log.error("session_ended 이벤트 발송 실패: userId={}", event.getUserId(), e);
         }
