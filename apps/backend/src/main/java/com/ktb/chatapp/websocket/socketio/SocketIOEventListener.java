@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.event.EventListener;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 
 import static com.ktb.chatapp.websocket.socketio.SocketIOEvents.*;
@@ -19,6 +20,7 @@ public class SocketIOEventListener {
 
     private final SocketIOServer socketIOServer;
 
+    @Async
     @EventListener
     public void handleSessionEndedEvent(SessionEndedEvent event) {
         try {
@@ -33,6 +35,7 @@ public class SocketIOEventListener {
         }
     }
 
+    @Async
     @EventListener
     public void handleRoomCreatedEvent(RoomCreatedEvent event) {
         try {
@@ -43,6 +46,7 @@ public class SocketIOEventListener {
         }
     }
 
+    @Async
     @EventListener
     public void handleRoomUpdatedEvent(RoomUpdatedEvent event) {
         try {
@@ -53,6 +57,7 @@ public class SocketIOEventListener {
         }
     }
 
+    @Async
     @EventListener
     public void handleAiMessageStartEvent(AiMessageStartEvent event) {
         try {
@@ -70,6 +75,7 @@ public class SocketIOEventListener {
         }
     }
 
+    @Async
     @EventListener
     public void handleAiMessageChunkEvent(AiMessageChunkEvent event) {
         try {
@@ -86,6 +92,7 @@ public class SocketIOEventListener {
         }
     }
 
+    @Async
     @EventListener
     public void handleAiMessageCompleteEvent(AiMessageSavedEvent event) {
         
@@ -105,6 +112,7 @@ public class SocketIOEventListener {
         }
     }
 
+    @Async
     @EventListener
     public void handleAiMessageErrorEvent(AiMessageErrorEvent event) {
         try {

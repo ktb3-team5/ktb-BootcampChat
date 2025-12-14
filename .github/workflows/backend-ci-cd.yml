@@ -131,11 +131,15 @@ jobs:
           
           
           # 2. 순차적으로 재시작 (무중단 효과)
+          echo "🔄 Starting parallel restart..."
           for server in ${{ steps.get_backend_ips.outputs.ips }}; do
             echo "Restarting server $server..."
-            
-            ssh ubuntu@$server "mkdir -p $DEPLOY_PATH/logs && sudo chown -R ubuntu:ubuntu $DEPLOY_PATH/logs && sudo chmod 755 $DEPLOY_PATH/logs"
           
-            # 기존 재시작 명령어
-            ssh ubuntu@$server "chmod +x $DEPLOY_PATH/app-control.sh && cd $DEPLOY_PATH && ./app-control.sh restart"
+            (
+              ssh -o StrictHostKeyChecking=no ubuntu@$server "mkdir -p $DEPLOY_PATH/logs && sudo chown -R ubuntu:ubuntu $DEPLOY_PATH/logs && sudo chmod 755 $DEPLOY_PATH/logs"
+              ssh -o StrictHostKeyChecking=no ubuntu@$server "chmod +x $DEPLOY_PATH/app-control.sh && cd $DEPLOY_PATH && ./app-control.sh restart"
+            ) &
           done
+          
+          wait
+          echo "🚀 All servers restarted successfully!"
