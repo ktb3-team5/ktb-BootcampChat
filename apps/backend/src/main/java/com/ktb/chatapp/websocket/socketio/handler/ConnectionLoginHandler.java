@@ -3,6 +3,8 @@ package com.ktb.chatapp.websocket.socketio.handler;
 import com.corundumstudio.socketio.SocketIOClient;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.annotation.OnDisconnect;
+import com.ktb.chatapp.model.User;
+import com.ktb.chatapp.repository.UserRepository;
 import com.ktb.chatapp.websocket.socketio.ConnectedUsers;
 import com.ktb.chatapp.websocket.socketio.SocketUser;
 import com.ktb.chatapp.websocket.socketio.UserRooms;
@@ -33,6 +35,7 @@ public class ConnectionLoginHandler {
     private final UserRooms userRooms;
     private final RoomJoinHandler roomJoinHandler;
     private final RoomLeaveHandler roomLeaveHandler;
+    private final UserRepository userRepository;
 
     public ConnectionLoginHandler(
             SocketIOServer socketIOServer,
@@ -40,7 +43,7 @@ public class ConnectionLoginHandler {
             UserRooms userRooms,
             RoomJoinHandler roomJoinHandler,
             RoomLeaveHandler roomLeaveHandler,
-            MeterRegistry meterRegistry) {
+            MeterRegistry meterRegistry, UserRepository userRepository) {
         this.socketIOServer = socketIOServer;
         this.connectedUsers = connectedUsers;
         this.userRooms = userRooms;
@@ -51,6 +54,7 @@ public class ConnectionLoginHandler {
         Gauge.builder("socketio.concurrent.users", connectedUsers::size)
                 .description("Current number of concurrent Socket.IO users")
                 .register(meterRegistry);
+        this.userRepository = userRepository;
     }
     
     /**
@@ -61,6 +65,9 @@ public class ConnectionLoginHandler {
         
         try {
             notifyDuplicateLogin(client, userId);
+            // 유저 정보를 한 번 조회하여 소켓 세션에 캐싱
+            User dbUser = userRepository.findById(userId).orElseThrow();
+            client.set("userInfo", dbUser);
             client.set("user", user);
             
             userRooms.get(userId).forEach(roomId -> {
