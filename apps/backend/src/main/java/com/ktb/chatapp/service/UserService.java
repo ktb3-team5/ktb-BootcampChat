@@ -11,6 +11,11 @@ import com.ktb.chatapp.util.FileUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.mongodb.core.FindAndModifyOptions;
+import org.springframework.data.mongodb.core.MongoTemplate;
+import org.springframework.data.mongodb.core.query.Criteria;
+import org.springframework.data.mongodb.core.query.Query;
+import org.springframework.data.mongodb.core.query.Update;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -32,6 +37,7 @@ public class UserService {
     private final UserRepository userRepository;
     private final FileService fileService;
     private final PasswordEncoder passwordEncoder;
+    private final MongoTemplate mongoTemplate;
 
     @Value("${app.upload.dir:uploads}")
     private String uploadDir;
@@ -57,19 +63,34 @@ public class UserService {
     }
 
     /**
-     * 사용자 프로필 업데이트
+     * 사용자 프로필 업데이트 (Partial Update - 최적화)
      * @param email 사용자 이메일
      */
     public UserResponse updateUserProfile(String email, UpdateProfileRequest request) {
-        User user = userRepository.findByEmail(email.toLowerCase())
-                .orElseThrow(() -> new UsernameNotFoundException("사용자를 찾을 수 없습니다."));
+        // 쿼리 조건 생성 (이메일 기준)
+        Query query = new Query(Criteria.where("email").is(email.toLowerCase()));
 
-        // 프로필 정보 업데이트
-        user.setName(request.getName());
-        user.setUpdatedAt(LocalDateTime.now());
+        // 변경할 필드만 정의 ($set 사용)
+        Update update = new Update()
+                .set("name", request.getName())
+                .set("updatedAt", LocalDateTime.now());
 
-        User updatedUser = userRepository.save(user);
-        log.info("사용자 프로필 업데이트 완료 - ID: {}, Name: {}", user.getId(), request.getName());
+        // Partial Update 실행 (변경된 필드만 업데이트)
+        // - UserEventListener를 타지 않아 불필요한 이메일 암호화가 발생하지 않음
+        // - 전체 문서가 아닌 변경된 필드만 전송하여 네트워크/DB 리소스 절약
+        User updatedUser = mongoTemplate.findAndModify(
+                query,
+                update,
+                FindAndModifyOptions.options().returnNew(true), // 업데이트 후 문서 반환
+                User.class
+        );
+
+        if (updatedUser == null) {
+            throw new UsernameNotFoundException("사용자를 찾을 수 없습니다.");
+        }
+
+        log.info("사용자 프로필 업데이트 완료 (Partial Update) - Email: {}, Name: {}",
+                email, request.getName());
 
         return UserResponse.from(updatedUser);
     }
