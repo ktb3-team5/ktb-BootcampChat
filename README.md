@@ -56,7 +56,7 @@
     2.  **Global Session Store:** Redis를 활용해 모든 서버가 유저 상태 공유.
     3.  **DB 부하 분산:** Read 부하는 Redis Cache로, Write 부하는 비동기 처리 및 Replica Set으로 분산.
 
-![After Architecture Diagram](docs/arch.png)
+![After Architecture Diagram](docs/img/arch.png)
 *(개선: Redis를 중심으로 한 이벤트 브로드캐스팅 및 DB 부하 분산 구조)*
 
 ---
