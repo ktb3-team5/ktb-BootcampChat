@@ -35,11 +35,21 @@ public class SocketIOConfig {
     @Value("${socketio.server.port:5002}")
     private Integer port;
 
+    @Value("${socketio.server.boss-threads:50}")
+    private Integer bossThreads;
+
+    @Value("${socketio.server.worker-threads:500}")
+    private Integer workerThreads;
+
     @Bean(initMethod = "start", destroyMethod = "stop")
     public SocketIOServer socketIOServer(AuthTokenListener authTokenListener) {
         com.corundumstudio.socketio.Configuration config = new com.corundumstudio.socketio.Configuration();
         config.setHostname(host);
         config.setPort(port);
+
+        // thread 개수 늘린 후 적용
+        config.setBossThreads(bossThreads);
+        config.setWorkerThreads(workerThreads);
 
         var socketConfig = new SocketConfig();
         socketConfig.setReuseAddress(true);
